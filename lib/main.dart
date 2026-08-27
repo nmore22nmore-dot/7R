@@ -5,6 +5,10 @@ void main() {
   runApp(const NApp());
 }
 
+/* =========================================================
+   APP
+========================================================= */
+
 class NApp extends StatelessWidget {
   const NApp({super.key});
 
@@ -20,6 +24,14 @@ class NApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF00C8FF),
           brightness: Brightness.dark,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF11141C),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
         ),
         cardTheme: CardThemeData(
           color: const Color(0xFF11141C),
@@ -38,9 +50,9 @@ class NApp extends StatelessWidget {
   }
 }
 
-/* =========================
-   DATA
-========================= */
+/* =========================================================
+   DATA MODELS
+========================================================= */
 
 class NPost {
   NPost({
@@ -51,6 +63,7 @@ class NPost {
     this.comments = 0,
     this.verified = false,
     this.adult = false,
+    this.visibility = 'عام',
   });
 
   final String author;
@@ -58,6 +71,7 @@ class NPost {
   final String text;
   final bool verified;
   final bool adult;
+  final String visibility;
 
   int likes;
   int comments;
@@ -77,12 +91,27 @@ class NMessage {
   final String time;
 }
 
+class NStory {
+  NStory({
+    required this.name,
+    required this.username,
+    this.viewed = false,
+  });
+
+  final String name;
+  final String username;
+  bool viewed;
+}
+
+/* =========================================================
+   APP DATA
+========================================================= */
+
 class NData extends ChangeNotifier {
   String name = 'مستخدم N';
   String username = 'n_user';
   String email = '';
   int age = 25;
-
   bool loggedIn = false;
 
   final List<NPost> posts = [
@@ -111,6 +140,14 @@ class NData extends ChangeNotifier {
     ),
   ];
 
+  final List<NStory> stories = [
+    NStory(name: 'N Official', username: 'n'),
+    NStory(name: 'Ahmed', username: 'ahmed'),
+    NStory(name: 'Sara', username: 'sara'),
+    NStory(name: 'Mohamed', username: 'mohamed'),
+    NStory(name: 'Noor', username: 'noor'),
+  ];
+
   final Set<String> following = <String>{};
 
   final Map<String, List<NMessage>> messages = {
@@ -133,7 +170,7 @@ class NData extends ChangeNotifier {
   bool get adultAllowed => age >= 21;
 
   int get myPosts =>
-      posts.where((p) => p.username == username).length;
+      posts.where((post) => post.username == username).length;
 
   void login({
     required String newName,
@@ -152,6 +189,7 @@ class NData extends ChangeNotifier {
   void createPost(
     String text, {
     bool adult = false,
+    String visibility = 'عام',
   }) {
     posts.insert(
       0,
@@ -160,6 +198,7 @@ class NData extends ChangeNotifier {
         username: username,
         text: text,
         adult: adult,
+        visibility: visibility,
       ),
     );
     notifyListeners();
@@ -198,12 +237,15 @@ class NData extends ChangeNotifier {
   }
 
   List<NPost> postsOf(String user) {
-    return posts.where((p) => p.username == user).toList();
+    return posts.where((post) => post.username == user).toList();
   }
 
   List<NPost> visiblePosts() {
-    return posts.where((p) {
-      if (!p.adult) return true;
+    return posts.where((post) {
+      if (!post.adult) {
+        return true;
+      }
+
       return adultAllowed;
     }).toList();
   }
@@ -211,11 +253,16 @@ class NData extends ChangeNotifier {
   void sendMessage(String user, String text) {
     final list = messages.putIfAbsent(user, () => []);
 
+    final now = DateTime.now();
+
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+
     list.add(
       NMessage(
         sender: username,
         text: text,
-        time: TimeOfDay.now().format(const Locale('en')),
+        time: '$hour:$minute',
       ),
     );
 
@@ -230,9 +277,9 @@ class NData extends ChangeNotifier {
 
 final NData data = NData();
 
-/* =========================
+/* =========================================================
    LOGIN
-========================= */
+========================================================= */
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -245,26 +292,26 @@ class _LoginPageState extends State<LoginPage> {
   bool register = true;
   bool hidden = true;
 
-  final name = TextEditingController();
-  final username = TextEditingController();
-  final email = TextEditingController();
-  final password = TextEditingController();
+  final nameController = TextEditingController();
+  final usernameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
 
   DateTime? birthDate;
 
   @override
   void dispose() {
-    name.dispose();
-    username.dispose();
-    email.dispose();
-    password.dispose();
+    nameController.dispose();
+    usernameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
     super.dispose();
   }
 
   int ageFromBirth(DateTime date) {
     final now = DateTime.now();
 
-    var age = now.year - date.year;
+    int age = now.year - date.year;
 
     final birthday = DateTime(
       now.year,
@@ -302,13 +349,13 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void submit() {
-    final u = username.text
+    final u = usernameController.text
         .trim()
         .replaceFirst('@', '')
         .replaceAll(' ', '')
         .toLowerCase();
 
-    if (register && name.text.trim().isEmpty) {
+    if (register && nameController.text.trim().isEmpty) {
       showMessage('اكتب اسمك');
       return;
     }
@@ -319,16 +366,18 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     if (!RegExp(r'^[a-zA-Z0-9_.]+$').hasMatch(u)) {
-      showMessage('استخدم الأحرف الإنجليزية والأرقام و _ و . فقط');
+      showMessage(
+        'استخدم الأحرف الإنجليزية والأرقام و _ و . فقط',
+      );
       return;
     }
 
-    if (!email.text.contains('@')) {
+    if (!emailController.text.contains('@')) {
       showMessage('أدخل بريدًا إلكترونيًا صحيحًا');
       return;
     }
 
-    if (password.text.length < 6) {
+    if (passwordController.text.length < 6) {
       showMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
@@ -346,9 +395,11 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     data.login(
-      newName: register ? name.text.trim() : 'N User',
+      newName: register
+          ? nameController.text.trim()
+          : 'N User',
       newUsername: u,
-      newEmail: email.text.trim(),
+      newEmail: emailController.text.trim(),
       newAge: age,
     );
 
@@ -395,9 +446,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 24),
-
                   Text(
                     register ? 'انضم إلى N' : 'مرحباً بعودتك',
                     style: const TextStyle(
@@ -405,9 +454,7 @@ class _LoginPageState extends State<LoginPage> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   Text(
                     register
                         ? 'شبكة اجتماعية جديدة تجمعك بالعالم'
@@ -416,12 +463,10 @@ class _LoginPageState extends State<LoginPage> {
                       color: Colors.white60,
                     ),
                   ),
-
                   const SizedBox(height: 30),
-
                   if (register)
                     TextField(
-                      controller: name,
+                      controller: nameController,
                       decoration: const InputDecoration(
                         labelText: 'الاسم',
                         prefixIcon: Icon(
@@ -429,12 +474,9 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ),
-
-                  if (register)
-                    const SizedBox(height: 12),
-
+                  if (register) const SizedBox(height: 12),
                   TextField(
-                    controller: username,
+                    controller: usernameController,
                     decoration: const InputDecoration(
                       labelText: 'اسم المستخدم',
                       hintText: '@username',
@@ -443,13 +485,10 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 12),
-
                   TextField(
-                    controller: email,
-                    keyboardType:
-                        TextInputType.emailAddress,
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       labelText: 'البريد الإلكتروني',
                       prefixIcon: Icon(
@@ -457,11 +496,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 12),
-
                   TextField(
-                    controller: password,
+                    controller: passwordController,
                     obscureText: hidden,
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
@@ -482,7 +519,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   if (register) ...[
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
@@ -497,9 +533,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ],
-
                   const SizedBox(height: 22),
-
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
@@ -518,7 +552,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ),
-
                   TextButton(
                     onPressed: () {
                       setState(() {
@@ -531,9 +564,7 @@ class _LoginPageState extends State<LoginPage> {
                           : 'إنشاء حساب جديد',
                     ),
                   ),
-
                   const SizedBox(height: 15),
-
                   const Text(
                     'N • محتوى +21 محمي حسب عمر الحساب',
                     textAlign: TextAlign.center,
@@ -552,9 +583,9 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-/* =========================
+/* =========================================================
    HOME SHELL
-========================= */
+========================================================= */
 
 class NHome extends StatefulWidget {
   const NHome({super.key});
@@ -566,7 +597,7 @@ class NHome extends StatefulWidget {
 class _NHomeState extends State<NHome> {
   int index = 0;
 
-  final pages = const [
+  final List<Widget> pages = const [
     HomePage(),
     ExplorePage(),
     CreatePage(),
@@ -619,12 +650,10 @@ class _NHomeState extends State<NHome> {
               ),
             ],
           ),
-
           body: IndexedStack(
             index: index,
             children: pages,
           ),
-
           bottomNavigationBar: NavigationBar(
             selectedIndex: index,
             onDestinationSelected: (value) {
@@ -666,9 +695,9 @@ class _NHomeState extends State<NHome> {
   }
 }
 
-/* =========================
+/* =========================================================
    HOME
-========================= */
+========================================================= */
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -685,26 +714,25 @@ class HomePage extends StatelessWidget {
             fontWeight: FontWeight.w900,
           ),
         ),
-
         const SizedBox(height: 12),
-
         SizedBox(
           height: 105,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            children: const [
-              Story(label: 'قصتك', own: true),
-              Story(label: 'N Official'),
-              Story(label: 'Ahmed'),
-              Story(label: 'Sara'),
-              Story(label: 'Mohamed'),
-              Story(label: 'Noor'),
+            children: [
+              const Story(
+                label: 'قصتك',
+                own: true,
+              ),
+              ...data.stories.map(
+                (story) => Story(
+                  label: story.name,
+                ),
+              ),
             ],
           ),
         ),
-
         const SizedBox(height: 18),
-
         GestureDetector(
           onTap: () {
             Navigator.push(
@@ -769,9 +797,7 @@ class HomePage extends StatelessWidget {
             ),
           ),
         ),
-
         const SizedBox(height: 20),
-
         const Text(
           'لك',
           style: TextStyle(
@@ -779,9 +805,7 @@ class HomePage extends StatelessWidget {
             fontWeight: FontWeight.w900,
           ),
         ),
-
         const SizedBox(height: 10),
-
         AnimatedBuilder(
           animation: data,
           builder: (_, __) {
@@ -801,9 +825,9 @@ class HomePage extends StatelessWidget {
   }
 }
 
-/* =========================
+/* =========================================================
    STORY
-========================= */
+========================================================= */
 
 class Story extends StatelessWidget {
   const Story({
@@ -819,9 +843,12 @@ class Story extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم فتح قصة $label'),
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StoryViewerPage(
+              title: label,
+            ),
           ),
         );
       },
@@ -843,9 +870,13 @@ class Story extends StatelessWidget {
                   ],
                 ),
               ),
-              child: const CircleAvatar(
+              child: CircleAvatar(
                 radius: 31,
-                child: Icon(Icons.person),
+                child: Icon(
+                  own
+                      ? Icons.add
+                      : Icons.person,
+                ),
               ),
             ),
             const SizedBox(height: 6),
@@ -861,9 +892,63 @@ class Story extends StatelessWidget {
   }
 }
 
-/* =========================
-   POST
-========================= */
+/* =========================================================
+   STORY VIEWER
+========================================================= */
+
+class StoryViewerPage extends StatelessWidget {
+  const StoryViewerPage({
+    super.key,
+    required this.title,
+  });
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Text(title),
+      ),
+      body: Stack(
+        children: [
+          const Center(
+            child: Icon(
+              Icons.image,
+              size: 100,
+              color: Colors.white24,
+            ),
+          ),
+          Positioned(
+            bottom: 30,
+            right: 20,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Text(
+                'قصة N',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* =========================================================
+   POST CARD
+========================================================= */
 
 class PostCard extends StatelessWidget {
   const PostCard({
@@ -880,8 +965,7 @@ class PostCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(15),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
@@ -889,9 +973,7 @@ class PostCard extends StatelessWidget {
                   radius: 23,
                   child: Icon(Icons.person),
                 ),
-
                 const SizedBox(width: 10),
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -899,10 +981,13 @@ class PostCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            post.author,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
+                          Flexible(
+                            child: Text(
+                              post.author,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           if (post.verified) ...[
@@ -925,7 +1010,6 @@ class PostCard extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 IconButton(
                   onPressed: () {
                     _postMenu(context);
@@ -936,9 +1020,7 @@ class PostCard extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 13),
-
             Text(
               post.text,
               style: const TextStyle(
@@ -946,9 +1028,7 @@ class PostCard extends StatelessWidget {
                 height: 1.5,
               ),
             ),
-
             const SizedBox(height: 12),
-
             Container(
               height: 190,
               width: double.infinity,
@@ -970,7 +1050,6 @@ class PostCard extends StatelessWidget {
                 ),
               ),
             ),
-
             Row(
               children: [
                 IconButton(
@@ -983,9 +1062,7 @@ class PostCard extends StatelessWidget {
                         post.liked ? Colors.red : null,
                   ),
                 ),
-
                 Text('${post.likes}'),
-
                 IconButton(
                   onPressed: () {
                     _comments(context);
@@ -994,9 +1071,7 @@ class PostCard extends StatelessWidget {
                     Icons.mode_comment_outlined,
                   ),
                 ),
-
                 Text('${post.comments}'),
-
                 IconButton(
                   onPressed: () {
                     ScaffoldMessenger.of(context)
@@ -1012,9 +1087,7 @@ class PostCard extends StatelessWidget {
                     Icons.share_outlined,
                   ),
                 ),
-
                 const Spacer(),
-
                 IconButton(
                   onPressed: () => data.save(post),
                   icon: Icon(
@@ -1047,6 +1120,7 @@ class PostCard extends StatelessWidget {
                     .viewInsets
                     .bottom +
                 16,
+            top: 15,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1072,6 +1146,7 @@ class PostCard extends StatelessWidget {
                     data.comment(post);
                   }
 
+                  controller.dispose();
                   Navigator.pop(context);
                 },
                 child: const Text('إرسال'),
@@ -1100,7 +1175,11 @@ class PostCard extends StatelessWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.bookmark),
-                title: const Text('حفظ المنشور'),
+                title: Text(
+                  post.saved
+                      ? 'إزالة من المحفوظات'
+                      : 'حفظ المنشور',
+                ),
                 onTap: () {
                   data.save(post);
                   Navigator.pop(context);
@@ -1122,16 +1201,15 @@ class PostCard extends StatelessWidget {
   }
 }
 
-/* =========================
+/* =========================================================
    EXPLORE
-========================= */
+========================================================= */
 
 class ExplorePage extends StatefulWidget {
   const ExplorePage({super.key});
 
   @override
-  State<ExplorePage> createState() =>
-      _ExplorePageState();
+  State<ExplorePage> createState() => _ExplorePageState();
 }
 
 class _ExplorePageState extends State<ExplorePage> {
@@ -1154,9 +1232,9 @@ class _ExplorePageState extends State<ExplorePage> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = users.where((user) {
-      final q = search.text.toLowerCase();
+    final q = search.text.toLowerCase();
 
+    final filtered = users.where((user) {
       return q.isEmpty ||
           user[0].toLowerCase().contains(q) ||
           user[1].toLowerCase().contains(q);
@@ -1172,9 +1250,7 @@ class _ExplorePageState extends State<ExplorePage> {
             fontWeight: FontWeight.w900,
           ),
         ),
-
         const SizedBox(height: 15),
-
         TextField(
           controller: search,
           onChanged: (_) => setState(() {}),
@@ -1183,9 +1259,7 @@ class _ExplorePageState extends State<ExplorePage> {
             prefixIcon: Icon(Icons.search),
           ),
         ),
-
         const SizedBox(height: 24),
-
         const Text(
           'حسابات مقترحة',
           style: TextStyle(
@@ -1193,9 +1267,7 @@ class _ExplorePageState extends State<ExplorePage> {
             fontWeight: FontWeight.bold,
           ),
         ),
-
         const SizedBox(height: 8),
-
         ...filtered.map(
           (user) {
             final followed =
@@ -1234,9 +1306,7 @@ class _ExplorePageState extends State<ExplorePage> {
             );
           },
         ),
-
         const SizedBox(height: 22),
-
         const Text(
           'الرائج الآن',
           style: TextStyle(
@@ -1244,7 +1314,6 @@ class _ExplorePageState extends State<ExplorePage> {
             fontWeight: FontWeight.bold,
           ),
         ),
-
         ...List.generate(
           7,
           (i) => ListTile(
@@ -1271,16 +1340,15 @@ class _ExplorePageState extends State<ExplorePage> {
   }
 }
 
-/* =========================
+/* =========================================================
    CREATE
-========================= */
+========================================================= */
 
 class CreatePage extends StatefulWidget {
   const CreatePage({super.key});
 
   @override
-  State<CreatePage> createState() =>
-      _CreatePageState();
+  State<CreatePage> createState() => _CreatePageState();
 }
 
 class _CreatePageState extends State<CreatePage> {
@@ -1321,12 +1389,14 @@ class _CreatePageState extends State<CreatePage> {
     data.createPost(
       text,
       adult: adult,
+      visibility: visibility,
     );
 
     controller.clear();
 
     setState(() {
       adult = false;
+      visibility = 'عام';
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1351,9 +1421,7 @@ class _CreatePageState extends State<CreatePage> {
               fontWeight: FontWeight.w900,
             ),
           ),
-
           const SizedBox(height: 16),
-
           Row(
             children: [
               const CircleAvatar(
@@ -1369,9 +1437,7 @@ class _CreatePageState extends State<CreatePage> {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
           Expanded(
             child: TextField(
               controller: controller,
@@ -1387,9 +1453,7 @@ class _CreatePageState extends State<CreatePage> {
               ),
             ),
           ),
-
           const SizedBox(height: 10),
-
           Row(
             children: [
               Expanded(
@@ -1431,7 +1495,6 @@ class _CreatePageState extends State<CreatePage> {
               ),
             ],
           ),
-
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('+21'),
@@ -1457,7 +1520,6 @@ class _CreatePageState extends State<CreatePage> {
               });
             },
           ),
-
           DropdownButtonFormField<String>(
             initialValue: visibility,
             decoration: const InputDecoration(
@@ -1485,9 +1547,7 @@ class _CreatePageState extends State<CreatePage> {
               }
             },
           ),
-
           const SizedBox(height: 10),
-
           FilledButton.icon(
             onPressed: publish,
             icon: const Icon(Icons.send),
@@ -1502,9 +1562,9 @@ class _CreatePageState extends State<CreatePage> {
   }
 }
 
-/* =========================
+/* =========================================================
    LIVE
-========================= */
+========================================================= */
 
 class LivePage extends StatelessWidget {
   const LivePage({super.key});
@@ -1535,7 +1595,6 @@ class LivePage extends StatelessWidget {
               ),
             ),
           ),
-
           Positioned(
             right: 15,
             top: 15,
@@ -1556,7 +1615,6 @@ class LivePage extends StatelessWidget {
               ),
             ),
           ),
-
           Positioned(
             left: 15,
             bottom: 20,
@@ -1577,7 +1635,6 @@ class LivePage extends StatelessWidget {
               ],
             ),
           ),
-
           Positioned(
             left: 15,
             bottom: 110,
@@ -1592,7 +1649,16 @@ class LivePage extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'تم إرسال هدية 🎁',
+                        ),
+                      ),
+                    );
+                  },
                   icon: const Icon(
                     Icons.card_giftcard,
                     size: 35,
@@ -1614,16 +1680,16 @@ class LivePage extends StatelessWidget {
   }
 }
 
-/* =========================
+/* =========================================================
    MESSAGES
-========================= */
+========================================================= */
 
 class MessagesPage extends StatelessWidget {
   const MessagesPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    const users = [
+    final users = const [
       ['Ahmed', 'ahmed'],
       ['Sara', 'sara'],
     ];
@@ -1640,6 +1706,13 @@ class MessagesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: users.map((user) {
+          final messages =
+              data.messages[user[1]] ?? [];
+
+          final last = messages.isNotEmpty
+              ? messages.last.text
+              : 'ابدأ المحادثة';
+
           return Card(
             margin: const EdgeInsets.only(
               bottom: 10,
@@ -1649,9 +1722,7 @@ class MessagesPage extends StatelessWidget {
                 child: Icon(Icons.person),
               ),
               title: Text(user[0]),
-              subtitle: const Text(
-                'اضغط لفتح المحادثة',
-              ),
+              subtitle: Text(last),
               trailing: const Icon(
                 Icons.chevron_left,
               ),
@@ -1673,6 +1744,10 @@ class MessagesPage extends StatelessWidget {
     );
   }
 }
+
+/* =========================================================
+   CHAT
+========================================================= */
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -1700,7 +1775,9 @@ class _ChatPageState extends State<ChatPage> {
   void send() {
     final text = controller.text.trim();
 
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      return;
+    }
 
     data.sendMessage(
       widget.username,
@@ -1712,9 +1789,6 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final messages =
-        data.messages[widget.username] ?? [];
-
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -1738,11 +1812,20 @@ class _ChatPageState extends State<ChatPage> {
                     data.messages[widget.username] ??
                         [];
 
+                if (current.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'ابدأ المحادثة الآن',
+                    ),
+                  );
+                }
+
                 return ListView.builder(
                   padding: const EdgeInsets.all(15),
                   itemCount: current.length,
                   itemBuilder: (_, i) {
                     final message = current[i];
+
                     final mine =
                         message.sender ==
                             data.username;
@@ -1772,8 +1855,20 @@ class _ChatPageState extends State<ChatPage> {
                           borderRadius:
                               BorderRadius.circular(18),
                         ),
-                        child: Text(
-                          message.text,
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(message.text),
+                            const SizedBox(height: 3),
+                            Text(
+                              message.time,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Colors.white54,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -1782,7 +1877,6 @@ class _ChatPageState extends State<ChatPage> {
               },
             ),
           ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(10),
@@ -1815,9 +1909,9 @@ class _ChatPageState extends State<ChatPage> {
   }
 }
 
-/* =========================
+/* =========================================================
    NOTIFICATIONS
-========================= */
+========================================================= */
 
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
@@ -1834,27 +1928,32 @@ class NotificationsPage extends StatelessWidget {
           NotificationItem(
             icon: Icons.favorite,
             title: 'الإعجابات',
-            subtitle: 'لديك تفاعلات جديدة على منشوراتك',
+            subtitle:
+                'لديك تفاعلات جديدة على منشوراتك',
           ),
           NotificationItem(
             icon: Icons.person_add,
             title: 'متابعون جدد',
-            subtitle: 'هناك أشخاص جدد يتابعونك',
+            subtitle:
+                'هناك أشخاص جدد يتابعونك',
           ),
           NotificationItem(
             icon: Icons.mode_comment,
             title: 'التعليقات',
-            subtitle: 'لديك تعليقات جديدة',
+            subtitle:
+                'لديك تعليقات جديدة',
           ),
           NotificationItem(
             icon: Icons.live_tv,
             title: 'البث المباشر',
-            subtitle: 'بدأ بث مباشر جديد',
+            subtitle:
+                'بدأ بث مباشر جديد',
           ),
           NotificationItem(
             icon: Icons.message,
             title: 'رسالة جديدة',
-            subtitle: 'لديك رسالة جديدة',
+            subtitle:
+                'لديك رسالة جديدة',
           ),
         ],
       ),
@@ -1897,9 +1996,9 @@ class NotificationItem extends StatelessWidget {
   }
 }
 
-/* =========================
+/* =========================================================
    PROFILE
-========================= */
+========================================================= */
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -1916,7 +2015,6 @@ class ProfilePage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           children: [
             const SizedBox(height: 10),
-
             const Center(
               child: CircleAvatar(
                 radius: 55,
@@ -1926,9 +2024,7 @@ class ProfilePage extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 13),
-
             Center(
               child: Text(
                 data.name,
@@ -1938,7 +2034,6 @@ class ProfilePage extends StatelessWidget {
                 ),
               ),
             ),
-
             Center(
               child: Text(
                 '@${data.username}',
@@ -1947,9 +2042,7 @@ class ProfilePage extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 22),
-
             Row(
               mainAxisAlignment:
                   MainAxisAlignment.spaceEvenly,
@@ -1963,14 +2056,13 @@ class ProfilePage extends StatelessWidget {
                   label: 'المتابعون',
                 ),
                 ProfileStat(
-                  number: '${data.following.length}',
+                  number:
+                      '${data.following.length}',
                   label: 'المتابَعون',
                 ),
               ],
             ),
-
             const SizedBox(height: 24),
-
             Card(
               child: Column(
                 children: [
@@ -1995,9 +2087,7 @@ class ProfilePage extends StatelessWidget {
                       );
                     },
                   ),
-
                   const Divider(height: 1),
-
                   ListTile(
                     leading: const Icon(
                       Icons.security,
@@ -2018,9 +2108,7 @@ class ProfilePage extends StatelessWidget {
                       );
                     },
                   ),
-
                   const Divider(height: 1),
-
                   const ListTile(
                     leading: Icon(
                       Icons.shield_outlined,
@@ -2032,9 +2120,7 @@ class ProfilePage extends StatelessWidget {
                       'محتوى +21 محمي بحسب عمر الحساب',
                     ),
                   ),
-
                   const Divider(height: 1),
-
                   ListTile(
                     leading: const Icon(
                       Icons.settings_outlined,
@@ -2056,9 +2142,9 @@ class ProfilePage extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
 
+            // منشورات صاحب الحساب تظهر داخل ملفه الشخصي
             const Text(
               'منشوراتي',
               style: TextStyle(
@@ -2066,9 +2152,7 @@ class ProfilePage extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
             ),
-
             const SizedBox(height: 10),
-
             if (myPosts.isEmpty)
               const Card(
                 child: Padding(
@@ -2080,13 +2164,10 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ),
               ),
-
             ...myPosts.map(
               (post) => PostCard(post: post),
             ),
-
             const SizedBox(height: 10),
-
             OutlinedButton.icon(
               onPressed: () {
                 data.logout();
@@ -2102,432 +2183,4 @@ class ProfilePage extends StatelessWidget {
               },
               icon: const Icon(Icons.logout),
               label: const Text(
-                'تسجيل الخروج',
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/* =========================
-   OTHER PROFILE
-========================= */
-
-class UserProfilePage extends StatelessWidget {
-  const UserProfilePage({
-    super.key,
-    required this.name,
-    required this.username,
-  });
-
-  final String name;
-  final String username;
-
-  @override
-  Widget build(BuildContext context) {
-    final posts = data.postsOf(username);
-    final followed =
-        data.following.contains(username);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(name),
-      ),
-      body: AnimatedBuilder(
-        animation: data,
-        builder: (_, __) {
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              const CircleAvatar(
-                radius: 55,
-                child: Icon(
-                  Icons.person,
-                  size: 52,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              Center(
-                child: Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-
-              Center(
-                child: Text(
-                  '@$username',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              FilledButton(
-                onPressed: () {
-                  data.follow(username);
-                },
-                child: Text(
-                  followed ? 'متابَع' : 'متابعة',
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              const Text(
-                'المنشورات',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              if (posts.isEmpty)
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(22),
-                    child: Center(
-                      child: Text(
-                        'لا توجد منشورات بعد',
-                      ),
-                    ),
-                  ),
-                ),
-
-              ...posts.map(
-                (post) => PostCard(post: post),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/* =========================
-   SETTINGS
-========================= */
-
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('الإعدادات'),
-      ),
-      body: ListView(
-        children: [
-          ListTile(
-            leading: const Icon(
-              Icons.person_outline,
-            ),
-            title: const Text('الحساب'),
-            subtitle: const Text(
-              'تعديل معلومات الحساب',
-            ),
-            trailing: const Icon(
-              Icons.chevron_left,
-            ),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const AccountSettingsPage(),
-                ),
-              );
-            },
-          ),
-
-          const Divider(),
-
-          ListTile(
-            leading: const Icon(
-              Icons.lock_outline,
-            ),
-            title: const Text(
-              'الخصوصية والأمان',
-            ),
-            trailing: const Icon(
-              Icons.chevron_left,
-            ),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const PrivacyPage(),
-                ),
-              );
-            },
-          ),
-
-          const Divider(),
-
-          const ListTile(
-            leading: Icon(
-              Icons.notifications_outlined,
-            ),
-            title: Text('إعدادات التنبيهات'),
-            trailing: Icon(
-              Icons.chevron_left,
-            ),
-          ),
-
-          const Divider(),
-
-          const ListTile(
-            leading: Icon(
-              Icons.language,
-            ),
-            title: Text('اللغة'),
-            subtitle: Text('العربية'),
-            trailing: Icon(
-              Icons.chevron_left,
-            ),
-          ),
-
-          const Divider(),
-
-          const ListTile(
-            leading: Icon(
-              Icons.dark_mode_outlined,
-            ),
-            title: Text('المظهر'),
-            subtitle: Text('الوضع الداكن'),
-          ),
-
-          const Divider(),
-
-          const ListTile(
-            leading: Icon(
-              Icons.help_outline,
-            ),
-            title: Text('المساعدة'),
-          ),
-
-          const ListTile(
-            leading: Icon(
-              Icons.info_outline,
-            ),
-            title: Text('حول N'),
-            subtitle: Text('N Social Platform'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/* =========================
-   ACCOUNT SETTINGS
-========================= */
-
-class AccountSettingsPage extends StatelessWidget {
-  const AccountSettingsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('الحساب'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(
-                    Icons.person,
-                  ),
-                  title: const Text('الاسم'),
-                  subtitle: Text(data.name),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(
-                    Icons.alternate_email,
-                  ),
-                  title: const Text(
-                    'اسم المستخدم',
-                  ),
-                  subtitle: Text(
-                    '@${data.username}',
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(
-                    Icons.email_outlined,
-                  ),
-                  title: const Text(
-                    'البريد الإلكتروني',
-                  ),
-                  subtitle: Text(
-                    data.email.isEmpty
-                        ? 'غير محدد'
-                        : data.email,
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(
-                    Icons.cake_outlined,
-                  ),
-                  title: const Text(
-                    'العمر',
-                  ),
-                  subtitle: Text(
-                    '${data.age} سنة',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/* =========================
-   PRIVACY
-========================= */
-
-class PrivacyPage extends StatefulWidget {
-  const PrivacyPage({super.key});
-
-  @override
-  State<PrivacyPage> createState() =>
-      _PrivacyPageState();
-}
-
-class _PrivacyPageState
-    extends State<PrivacyPage> {
-  bool privateAccount = false;
-  bool messages = true;
-  bool notifications = true;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'الخصوصية والأمان',
-        ),
-      ),
-      body: ListView(
-        children: [
-          SwitchListTile(
-            title: const Text(
-              'حساب خاص',
-            ),
-            subtitle: const Text(
-              'التحكم في من يستطيع متابعة حسابك',
-            ),
-            value: privateAccount,
-            onChanged: (v) {
-              setState(() {
-                privateAccount = v;
-              });
-            },
-          ),
-
-          const Divider(),
-
-          SwitchListTile(
-            title: const Text(
-              'السماح بالرسائل',
-            ),
-            subtitle: const Text(
-              'السماح للمستخدمين بإرسال رسائل',
-            ),
-            value: messages,
-            onChanged: (v) {
-              setState(() {
-                messages = v;
-              });
-            },
-          ),
-
-          const Divider(),
-
-          SwitchListTile(
-            title: const Text(
-              'التنبيهات',
-            ),
-            value: notifications,
-            onChanged: (v) {
-              setState(() {
-                notifications = v;
-              });
-            },
-          ),
-
-          const Divider(),
-
-          const ListTile(
-            leading: Icon(
-              Icons.shield_outlined,
-            ),
-            title: Text(
-              'الحماية العمرية +21',
-            ),
-            subtitle: Text(
-              'المحتوى المصنف +21 لا يظهر لمن هم دون 21 سنة',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/* =========================
-   PROFILE STAT
-========================= */
-
-class ProfileStat extends StatelessWidget {
-  const ProfileStat({
-    super.key,
-    required this.number,
-    required this.label,
-  });
-
-  final String number;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          number,
-          style: const TextStyle(
-            fontSize: 23,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(label),
-      ],
-    );
-  }
-}
+                'تسجيل الخروج
