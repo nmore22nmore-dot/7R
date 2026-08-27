@@ -7,32 +7,25 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Create clean Flutter project
+      - name: Prepare final project
         script: |
-          cd "$CM_BUILD_DIR"
-          rm -rf n_build
+          rm -rf android lib assets pubspec.yaml README.md
+          mkdir -p /tmp/n_final
+          unzip -o N_FINAL_RELEASE_ROOT_READY.zip -d /tmp/n_final
+          cp -r /tmp/n_final/android .
+          cp -r /tmp/n_final/lib .
+          cp -r /tmp/n_final/assets .
+          cp /tmp/n_final/pubspec.yaml .
+          cp /tmp/n_final/README.md .
 
-          flutter create --platforms=android n_build
-
-          rm -rf n_build/lib
-          cp -R "$CM_BUILD_DIR/lib" n_build/lib
-
-          cp "$CM_BUILD_DIR/pubspec.yaml" n_build/pubspec.yaml
-
-          rm -rf n_build/test
-
-          cd n_build
-          flutter pub get
+      - name: Flutter packages
+        script: flutter pub get
 
       - name: Analyze Dart code
-        script: |
-          cd "$CM_BUILD_DIR/n_build"
-          flutter analyze --no-fatal-infos --no-fatal-warnings
+        script: flutter analyze
 
       - name: Build release APK
-        script: |
-          cd "$CM_BUILD_DIR/n_build"
-          flutter build apk --release
+        script: flutter build apk --release
 
     artifacts:
-      - n_build/build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/app-release.apk
