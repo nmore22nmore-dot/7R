@@ -1,35 +1,21 @@
-workflows:
-  n-android-release:
-    name: N Android Release
-    max_build_duration: 30
+name: n_app
+description: N - Arabic social app
+publish_to: 'none'
 
-    environment:
-      flutter: stable
+version: 1.0.0+1
 
-    scripts:
-      - name: Create clean Flutter project
-        script: |
-          cd "$CM_BUILD_DIR"
-          rm -rf n_build
-          flutter create --platforms=android n_build
+environment:
+  sdk: ">=3.3.0 <4.0.0"
 
-          rm -rf n_build/lib
-          cp -R "$CM_BUILD_DIR/lib" n_build/lib
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
 
-          cp "$CM_BUILD_DIR/pubspec.yaml" n_build/pubspec.yaml
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
 
-          cd n_build
-          flutter pub get
-
-      - name: Analyze Dart code
-        script: |
-          cd "$CM_BUILD_DIR/n_build"
-          flutter analyze
-
-      - name: Build release APK
-        script: |
-          cd "$CM_BUILD_DIR/n_build"
-          flutter build apk --release
-
-    artifacts:
-      - n_build/build/app/outputs/flutter-apk/app-release.apk
+flutter:
+  uses-material-design: true
