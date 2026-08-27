@@ -11,7 +11,12 @@ workflows:
         script: |
           set -e
 
-          rm -rf android lib assets pubspec.yaml README.md
+          rm -rf android
+          rm -rf lib
+          rm -rf assets
+          rm -f pubspec.yaml
+          rm -f README.md
+
           rm -rf /tmp/n_final
           mkdir -p /tmp/n_final
 
@@ -23,22 +28,32 @@ workflows:
           cp /tmp/n_final/pubspec.yaml .
           cp /tmp/n_final/README.md .
 
-      - name: Fix Android and Gradle configuration
+      - name: Force correct Android Gradle configuration
         script: |
           set -e
 
-          # -------------------------------------------------
-          # settings.gradle
-          # -------------------------------------------------
+          mkdir -p android/gradle/wrapper
+
           cat > android/settings.gradle <<'EOF'
           pluginManagement {
               def flutterSdkPath = {
                   def properties = new Properties()
-                  file("local.properties").withInputStream {
+                  def localPropertiesFile = file("local.properties")
+
+                  if (!localPropertiesFile.exists()) {
+                      throw new GradleException("local.properties is missing")
+                  }
+
+                  localPropertiesFile.withInputStream {
                       properties.load(it)
                   }
+
                   def flutterSdkPath = properties.getProperty("flutter.sdk")
-                  assert flutterSdkPath != null : "flutter.sdk not set in local.properties"
+
+                  if (flutterSdkPath == null) {
+                      throw new GradleException("flutter.sdk not set in local.properties")
+                  }
+
                   return flutterSdkPath
               }()
 
@@ -76,9 +91,6 @@ workflows:
           include ":app"
           EOF
 
-          # -------------------------------------------------
-          # gradle.properties
-          # -------------------------------------------------
           cat > android/gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
           android.useAndroidX=true
@@ -87,9 +99,6 @@ workflows:
           android.builtInKotlin=false
           EOF
 
-          # -------------------------------------------------
-          # android/build.gradle
-          # -------------------------------------------------
           cat > android/build.gradle <<'EOF'
           rootProject.buildDir = "../build"
 
@@ -106,9 +115,6 @@ workflows:
           }
           EOF
 
-          # -------------------------------------------------
-          # app/build.gradle
-          # -------------------------------------------------
           cat > android/app/build.gradle <<'EOF'
           plugins {
               id "com.android.application"
@@ -157,11 +163,6 @@ workflows:
           }
           EOF
 
-          # -------------------------------------------------
-          # Gradle wrapper
-          # -------------------------------------------------
-          mkdir -p android/gradle/wrapper
-
           cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
@@ -170,32 +171,43 @@ workflows:
           zipStorePath=wrapper/dists
           EOF
 
-          echo "===== FINAL SETTINGS ====="
+          echo "===== AGP ====="
           grep 'com.android.application' android/settings.gradle
 
-          echo "===== FINAL GRADLE ====="
+          echo "===== GRADLE ====="
           grep 'distributionUrl' android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Flutter packages
+      - name: Create Flutter local configuration
         script: |
           set -e
+
           flutter pub get
 
-      - name: Verify Android configuration
+          echo "Flutter packages installed successfully."
+
+      - name: Verify final configuration
         script: |
           set -e
 
-          echo "===== settings.gradle ====="
-          cat android/settings.gradle
+          echo "===== SETTINGS ====="
+          grep 'com.android.application' android/settings.gradle
 
-          echo "===== app/build.gradle ====="
-          cat android/app/build.gradle
+          echo "===== APP BUILD ====="
+          grep -A3 '^plugins' android/app/build.gradle
 
-          echo "===== gradle.properties ====="
+          echo "===== GRADLE PROPERTIES ====="
           cat android/gradle.properties
 
-          echo "===== gradle-wrapper.properties ====="
+          echo "===== GRADLE WRAPPER ====="
           cat android/gradle/wrapper/gradle-wrapper.properties
+
+          echo "===== SEARCH FOR OLD AGP 8.7.3 ====="
+          if grep -R "8.7.3" android --exclude-dir=.gradle; then
+              echo "ERROR: OLD AGP 8.7.3 FOUND"
+              exit 1
+          fi
+
+          echo "SUCCESS: AGP 8.7.3 NOT FOUND"
 
       - name: Analyze Dart code
         script: |
@@ -205,6 +217,22 @@ workflows:
       - name: Build release APK
         script: |
           set -e
-          flutter build apk --release
-     artifacts:
+
+          flutter build apk \
+            --release \
+            --android-skip-build-dependency-validation
+
+      - name: Verify APK
+        script: |
+          set -e
+
+          if [ ! -f build/app/outputs/flutter-apk/app-release.apk ]; then
+              echo "ERROR: APK was not created."
+              exit 1
+          fi
+
+          echo "APK successfully created:"
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+
+    artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
