@@ -81,25 +81,44 @@ workflows:
           android.builtInKotlin=false
           EOF
 
-          echo "Gradle configuration fixed."
+          mkdir -p android/gradle/wrapper
+
+          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.0-bin.zip
+          EOF
+
+          echo "===== Gradle wrapper ====="
+          cat android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Flutter packages
         script: |
           set -e
           flutter pub get
 
-      - name: Verify configuration
+      - name: Verify Gradle configuration
         script: |
           set -e
+
+          echo "===== Gradle version ====="
+          cd android
+          ./gradlew --version
+          cd ..
 
           echo "===== settings.gradle ====="
           cat android/settings.gradle
 
+          echo "===== app/build.gradle ====="
+          cat android/app/build.gradle
+
           echo "===== gradle.properties ====="
           cat android/gradle.properties
 
-          echo "===== app/build.gradle ====="
-          cat android/app/build.gradle
+          echo "===== gradle-wrapper.properties ====="
+          cat android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Analyze Dart code
         script: |
