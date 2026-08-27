@@ -9,23 +9,56 @@ workflows:
     scripts:
       - name: Prepare final project
         script: |
+          set -e
+
           rm -rf android lib assets pubspec.yaml README.md
+          rm -rf /tmp/n_final
           mkdir -p /tmp/n_final
+
           unzip -o N_FINAL_RELEASE_GRADLE_FIXED.zip -d /tmp/n_final
+
           cp -r /tmp/n_final/android .
           cp -r /tmp/n_final/lib .
           cp -r /tmp/n_final/assets .
           cp /tmp/n_final/pubspec.yaml .
           cp /tmp/n_final/README.md .
 
+      - name: Fix Gradle repositories
+        script: |
+          set -e
+
+          cat > android/build.gradle <<'EOF'
+          rootProject.buildDir = "../build"
+
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+
+          subprojects {
+              project.evaluationDependsOn(":app")
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          echo "android/build.gradle fixed successfully."
+
       - name: Flutter packages
-        script: flutter pub get
+        script: |
+          set -e
+          flutter pub get
 
       - name: Analyze Dart code
-        script: flutter analyze
+        script: |
+          set -e
+          flutter analyze
 
       - name: Build release APK
-        script: flutter build apk --release
+        script: |
+          set -e
+          flutter build apk --release
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
