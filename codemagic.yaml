@@ -7,7 +7,7 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Prepare final project
+      - name: Prepare project
         script: |
           set -e
 
@@ -23,61 +23,83 @@ workflows:
           cp /tmp/n_final/pubspec.yaml .
           cp /tmp/n_final/README.md .
 
-      - name: Fix Gradle repositories
+      - name: Fix Gradle configuration
         script: |
           set -e
 
-          cat > android/build.gradle <<'EOF'
-          rootProject.buildDir = "../build"
+          cat > android/settings.gradle <<'EOF'
+          pluginManagement {
+              def flutterSdkPath = {
+                  def properties = new Properties()
+                  file("local.properties").withInputStream {
+                      properties.load(it)
+                  }
+                  def flutterSdkPath = properties.getProperty("flutter.sdk")
+                  assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+                  return flutterSdkPath
+              }()
 
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
+              includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+                  maven {
+                      url "https://storage.googleapis.com/download.flutter.io"
+                  }
+              }
           }
 
-          subprojects {
-              project.evaluationDependsOn(":app")
+          plugins {
+              id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+              id "com.android.application" version "8.7.3" apply false
+              id "org.jetbrains.kotlin.android" version "2.1.0" apply false
           }
 
-          tasks.register("clean", Delete) {
-              delete rootProject.buildDir
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven {
+                      url "https://storage.googleapis.com/download.flutter.io"
+                  }
+              }
           }
+
+          rootProject.name = "N"
+          include ":app"
           EOF
 
-          python3 - <<'PY'
-          from pathlib import Path
+          cat > android/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
+          android.useAndroidX=true
+          android.enableJetifier=true
+          android.newDsl=false
+          android.builtInKotlin=false
+          EOF
 
-          p = Path("android/settings.gradle")
-          text = p.read_text()
-
-          text = text.replace(
-              "repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)",
-              "repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)"
-          )
-
-          p.write_text(text)
-          print("settings.gradle fixed")
-          PY
+          echo "Gradle configuration fixed."
 
       - name: Flutter packages
         script: |
           set -e
           flutter pub get
 
-      - name: Verify Gradle configuration
+      - name: Verify configuration
         script: |
           set -e
 
           echo "===== settings.gradle ====="
           cat android/settings.gradle
 
-          echo "===== app/build.gradle ====="
-          cat android/app/build.gradle
-
           echo "===== gradle.properties ====="
           cat android/gradle.properties
 
-          echo "===== android/build.gradle ====="
-          cat android/build.gradle
+          echo "===== app/build.gradle ====="
+          cat android/app/build.gradle
 
       - name: Analyze Dart code
         script: |
