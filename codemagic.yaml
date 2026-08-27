@@ -27,6 +27,8 @@ workflows:
         script: |
           set -e
 
+          mkdir -p android/gradle/wrapper
+
           cat > android/settings.gradle <<'EOF'
           pluginManagement {
               def flutterSdkPath = {
@@ -81,32 +83,54 @@ workflows:
           android.builtInKotlin=false
           EOF
 
-          mkdir -p android/gradle/wrapper
-
           cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.0-bin.zip
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.0-bin.zip
           EOF
 
-          echo "===== Gradle wrapper ====="
+          cat > android/build.gradle <<'EOF'
+          rootProject.buildDir = "../build"
+
+          subprojects {
+              project.buildDir = "${rootProject.buildDir}/${project.name}"
+          }
+
+          subprojects {
+              project.evaluationDependsOn(":app")
+          }
+
+          tasks.register("clean", Delete) {
+              delete rootProject.buildDir
+          }
+          EOF
+
+          echo "===== FINAL GRADLE CONFIGURATION ====="
           cat android/gradle/wrapper/gradle-wrapper.properties
+          cat android/gradle.properties
 
       - name: Flutter packages
         script: |
           set -e
           flutter pub get
 
-      - name: Verify Gradle configuration
+      - name: Verify Gradle version
         script: |
           set -e
 
-          echo "===== Gradle version ====="
+          echo "===== GRADLE WRAPPER FILE ====="
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
+          echo "===== GRADLE VERSION ====="
           cd android
           ./gradlew --version
           cd ..
+
+      - name: Verify Android configuration
+        script: |
+          set -e
 
           echo "===== settings.gradle ====="
           cat android/settings.gradle
@@ -117,8 +141,8 @@ workflows:
           echo "===== gradle.properties ====="
           cat android/gradle.properties
 
-          echo "===== gradle-wrapper.properties ====="
-          cat android/gradle/wrapper/gradle-wrapper.properties
+          echo "===== android/build.gradle ====="
+          cat android/build.gradle
 
       - name: Analyze Dart code
         script: |
