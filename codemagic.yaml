@@ -63,18 +63,21 @@ workflows:
           set -e
           flutter pub get
 
-      - name: Force legacy Gradle compatibility
+      - name: Verify Gradle configuration
         script: |
           set -e
 
-          cat >> android/gradle.properties <<'EOF'
+          echo "===== settings.gradle ====="
+          cat android/settings.gradle
 
-          android.newDsl=false
-          android.builtInKotlin=false
-          EOF
+          echo "===== app/build.gradle ====="
+          cat android/app/build.gradle
 
-          echo "Gradle compatibility flags added:"
+          echo "===== gradle.properties ====="
           cat android/gradle.properties
+
+          echo "===== android/build.gradle ====="
+          cat android/build.gradle
 
       - name: Analyze Dart code
         script: |
