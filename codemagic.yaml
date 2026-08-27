@@ -11,7 +11,7 @@ workflows:
         script: |
           rm -rf android lib assets pubspec.yaml README.md
           mkdir -p /tmp/n_final
-          unzip -o N_FINAL_RELEASE_ROOT_READY_FINAL.zip -d /tmp/n_final
+          unzip -o N_FINAL_RELEASE_GRADLE_FIXED.zip -d /tmp/n_final
           cp -r /tmp/n_final/android .
           cp -r /tmp/n_final/lib .
           cp -r /tmp/n_final/assets .
