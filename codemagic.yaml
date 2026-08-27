@@ -23,6 +23,29 @@ workflows:
           cp /tmp/n_final/pubspec.yaml .
           cp /tmp/n_final/README.md .
 
+      - name: Prepare Flutter Android environment
+        script: |
+          set -e
+
+          echo "===== Flutter version ====="
+          flutter --version
+
+          echo "===== Flutter pub get ====="
+          flutter pub get
+
+          echo "===== Check local.properties ====="
+          if [ ! -f android/local.properties ]; then
+            FLUTTER_ROOT="$(flutter --version >/dev/null 2>&1 && dirname "$(dirname "$(which flutter)")")"
+
+            cat > android/local.properties <<EOF
+          flutter.sdk=$FLUTTER_ROOT
+          sdk.dir=$ANDROID_SDK_ROOT
+          EOF
+          fi
+
+          echo "===== local.properties ====="
+          cat android/local.properties
+
       - name: Fix Gradle configuration
         script: |
           set -e
@@ -117,22 +140,21 @@ workflows:
 
           chmod +x gradlew
 
-          echo "===== GRADLE WRAPPER CREATED ====="
+          echo "===== GRADLE WRAPPER ====="
           ls -la gradlew
           ls -la gradle/wrapper/
 
+          echo "===== GRADLE VERSION ====="
           ./gradlew --version
 
           cd ..
 
-      - name: Flutter packages
-        script: |
-          set -e
-          flutter pub get
-
       - name: Verify Android configuration
         script: |
           set -e
+
+          echo "===== local.properties ====="
+          cat android/local.properties
 
           echo "===== settings.gradle ====="
           cat android/settings.gradle
