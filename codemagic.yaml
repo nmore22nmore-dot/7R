@@ -43,7 +43,20 @@ workflows:
           }
           EOF
 
-          echo "android/build.gradle fixed successfully."
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/settings.gradle")
+          text = p.read_text()
+
+          text = text.replace(
+              "repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)",
+              "repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)"
+          )
+
+          p.write_text(text)
+          print("Gradle repository mode fixed successfully.")
+          PY
 
       - name: Flutter packages
         script: |
