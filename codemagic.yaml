@@ -83,14 +83,6 @@ workflows:
           android.builtInKotlin=false
           EOF
 
-          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.0-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-
           cat > android/build.gradle <<'EOF'
           rootProject.buildDir = "../build"
 
@@ -107,26 +99,36 @@ workflows:
           }
           EOF
 
-          echo "===== FINAL GRADLE CONFIGURATION ====="
-          cat android/gradle/wrapper/gradle-wrapper.properties
-          cat android/gradle.properties
+          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.0-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+
+      - name: Generate Gradle Wrapper
+        script: |
+          set -e
+
+          cd android
+
+          gradle wrapper --gradle-version 8.14.0
+
+          chmod +x gradlew
+
+          echo "===== GRADLE WRAPPER CREATED ====="
+          ls -la gradlew
+          ls -la gradle/wrapper/
+
+          ./gradlew --version
+
+          cd ..
 
       - name: Flutter packages
         script: |
           set -e
           flutter pub get
-
-      - name: Verify Gradle version
-        script: |
-          set -e
-
-          echo "===== GRADLE WRAPPER FILE ====="
-          cat android/gradle/wrapper/gradle-wrapper.properties
-
-          echo "===== GRADLE VERSION ====="
-          cd android
-          ./gradlew --version
-          cd ..
 
       - name: Verify Android configuration
         script: |
@@ -141,8 +143,13 @@ workflows:
           echo "===== gradle.properties ====="
           cat android/gradle.properties
 
-          echo "===== android/build.gradle ====="
-          cat android/build.gradle
+          echo "===== Gradle wrapper ====="
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
+          echo "===== Gradle version ====="
+          cd android
+          ./gradlew --version
+          cd ..
 
       - name: Analyze Dart code
         script: |
