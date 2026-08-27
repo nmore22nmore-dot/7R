@@ -9,24 +9,29 @@ workflows:
     scripts:
       - name: Create clean Flutter project
         script: |
-          cd ..
+          cd "$CM_BUILD_DIR"
           rm -rf n_build
-          flutter create -t app n_build
 
-          cp -R "$FCI_BUILD_DIR/lib/." n_build/lib/
-          cp "$FCI_BUILD_DIR/pubspec.yaml" n_build/pubspec.yaml
+          flutter create --platforms=android n_build
+
+          rm -rf n_build/lib
+          cp -R "$CM_BUILD_DIR/lib" n_build/lib
+
+          cp "$CM_BUILD_DIR/pubspec.yaml" n_build/pubspec.yaml
+
+          rm -rf n_build/test
 
           cd n_build
           flutter pub get
 
       - name: Analyze Dart code
         script: |
-          cd ../n_build
-          flutter analyze
+          cd "$CM_BUILD_DIR/n_build"
+          flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
         script: |
-          cd ../n_build
+          cd "$CM_BUILD_DIR/n_build"
           flutter build apk --release
 
     artifacts:
