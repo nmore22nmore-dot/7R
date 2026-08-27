@@ -7,20 +7,27 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Prepare Flutter project
+      - name: Create clean Flutter project
         script: |
-          flutter --version
-          flutter clean
+          cd ..
+          rm -rf n_build
+          flutter create -t app n_build
+
+          cp -R "$FCI_BUILD_DIR/lib/." n_build/lib/
+          cp "$FCI_BUILD_DIR/pubspec.yaml" n_build/pubspec.yaml
+
+          cd n_build
           flutter pub get
 
       - name: Analyze Dart code
         script: |
+          cd ../n_build
           flutter analyze
 
       - name: Build release APK
         script: |
-          flutter build apk --release --android-skip-build-dependency-validation
+          cd ../n_build
+          flutter build apk --release
 
     artifacts:
-      - build/app/outputs/flutter-apk/app-release.apk
-    
+      - n_build/build/app/outputs/flutter-apk/app-release.apk
