@@ -16,168 +16,136 @@ class NApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF08090C),
+        scaffoldBackgroundColor: const Color(0xFF07080D),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00C2FF),
+          seedColor: const Color(0xFF00C8FF),
           brightness: Brightness.dark,
         ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF15171D),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(width: 1.5),
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF111319),
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
       ),
-      home: const AuthPage(),
+      home: const Directionality(
+        textDirection: TextDirection.rtl,
+        child: LoginPage(),
+      ),
     );
   }
 }
 
-class NPost {
-  NPost({
-    required this.text,
-    required this.author,
-    required this.handle,
-    this.adult = false,
-  });
+class NData extends ChangeNotifier {
+  String name = 'مستخدم N';
+  String username = 'n_user';
+  int age = 25;
 
-  final String text;
-  final String author;
-  final String handle;
-  final bool adult;
-
-  int likes = 0;
-  int comments = 0;
-  bool liked = false;
-  bool saved = false;
-}
-
-class AppStore extends ChangeNotifier {
-  String name = '';
-  String username = '';
-  int age = 0;
-  bool loggedIn = false;
-  int unread = 3;
-
-  final List<NPost> posts = [
-    NPost(
-      text: 'مرحباً بك في N 👋',
+  final List<Post> posts = [
+    Post(
       author: 'N Official',
-      handle: '@n',
+      username: 'n',
+      text: 'مرحبًا بك في N 👋',
+      likes: 1240,
+      comments: 86,
+      verified: true,
     ),
-    NPost(
-      text: 'شارك أفكارك، لحظاتك، وصوتك مع مجتمع N.',
+    Post(
       author: 'N Official',
-      handle: '@n',
+      username: 'n',
+      text: 'شارك أفكارك، صورك، فيديوهاتك ولحظاتك مع مجتمع N.',
+      likes: 842,
+      comments: 41,
+      verified: true,
     ),
-    NPost(
-      text: 'اكتشف المحتوى الجديد والرائج اليوم.',
-      author: 'N Official',
-      handle: '@n',
+    Post(
+      author: 'N News',
+      username: 'nnews',
+      text: 'اكتشف أحدث المحتوى الرائج في N الآن.',
+      likes: 521,
+      comments: 28,
     ),
   ];
 
-  final Set<String> following = <String>{};
+  final Set<String> following = {};
 
-  bool get adultEligible => age >= 21;
+  bool get adultAllowed => age >= 21;
 
-  void login(
-    String newName,
-    String newUsername,
-    int newAge,
-  ) {
-    name = newName;
-    username = newUsername;
-    age = newAge;
-    loggedIn = true;
+  void login(String n, String u, int a) {
+    name = n;
+    username = u;
+    age = a;
     notifyListeners();
   }
 
-  void addPost(
-    String text, {
-    bool adult = false,
-  }) {
+  void createPost(String text, {bool adult = false}) {
     posts.insert(
       0,
-      NPost(
-        text: text,
+      Post(
         author: name,
-        handle: '@$username',
+        username: username,
+        text: text,
         adult: adult,
       ),
     );
-
     notifyListeners();
   }
 
-  void toggleLike(NPost post) {
+  void like(Post post) {
     post.liked = !post.liked;
-
-    if (post.liked) {
-      post.likes++;
-    } else if (post.likes > 0) {
-      post.likes--;
-    }
-
+    post.likes += post.liked ? 1 : -1;
     notifyListeners();
   }
 
-  void toggleSaved(NPost post) {
-    post.saved = !post.saved;
-    notifyListeners();
-  }
-
-  void addComment(NPost post) {
+  void comment(Post post) {
     post.comments++;
     notifyListeners();
   }
 
-  void toggleFollow(String handle) {
-    if (following.contains(handle)) {
-      following.remove(handle);
-    } else {
-      following.add(handle);
-    }
-
+  void save(Post post) {
+    post.saved = !post.saved;
     notifyListeners();
   }
 
-  void logout() {
-    loggedIn = false;
+  void follow(String username) {
+    if (following.contains(username)) {
+      following.remove(username);
+    } else {
+      following.add(username);
+    }
     notifyListeners();
   }
 }
 
-final AppStore store = AppStore();
+final data = NData();
 
-class AuthPage extends StatefulWidget {
-  const AuthPage({super.key});
+class Post {
+  Post({
+    required this.author,
+    required this.username,
+    required this.text,
+    this.likes = 0,
+    this.comments = 0,
+    this.adult = false,
+    this.verified = false,
+  });
+
+  final String author;
+  final String username;
+  final String text;
+  final bool adult;
+  final bool verified;
+
+  int likes;
+  int comments;
+  bool liked = false;
+  bool saved = false;
+}
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<AuthPage> createState() => _AuthPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _AuthPageState extends State<AuthPage> {
-  bool signup = true;
-  bool obscure = true;
+class _LoginPageState extends State<LoginPage> {
+  bool create = true;
+  bool passwordHidden = true;
 
   final name = TextEditingController();
   final username = TextEditingController();
@@ -195,22 +163,29 @@ class _AuthPageState extends State<AuthPage> {
     super.dispose();
   }
 
-  int calculateAge(DateTime date) {
+  int ageFromBirth(DateTime date) {
     final now = DateTime.now();
+    var age = now.year - date.year;
 
-    int result = now.year - date.year;
-
-    final birthday = DateTime(
-      now.year,
-      date.month,
-      date.day,
-    );
-
-    if (birthday.isAfter(now)) {
-      result--;
+    if (DateTime(now.year, date.month, date.day).isAfter(now)) {
+      age--;
     }
 
-    return result;
+    return age;
+  }
+
+  Future<void> chooseBirthDate() async {
+    final result = await showDatePicker(
+      context: context,
+      initialDate: DateTime(2000),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      helpText: 'اختر تاريخ الميلاد',
+    );
+
+    if (result != null) {
+      setState(() => birthDate = result);
+    }
   }
 
   void submit() {
@@ -220,270 +195,218 @@ class _AuthPageState extends State<AuthPage> {
         .replaceAll(' ', '')
         .toLowerCase();
 
-    if (signup && name.text.trim().isEmpty) {
-      _message('اكتب اسمك الكامل');
+    if (create && name.text.trim().isEmpty) {
+      message('اكتب اسمك');
       return;
     }
 
     if (u.length < 4) {
-      _message('اسم المستخدم يجب أن يكون 4 أحرف على الأقل');
+      message('اسم المستخدم يجب أن يحتوي على 4 أحرف على الأقل');
       return;
     }
 
     if (!RegExp(r'^[a-zA-Z0-9_.]+$').hasMatch(u)) {
-      _message(
-        'اسم المستخدم: أحرف إنجليزية وأرقام و _ . فقط',
-      );
+      message('استخدم الأحرف الإنجليزية والأرقام و _ و . فقط');
       return;
     }
 
     if (!email.text.contains('@')) {
-      _message('أدخل بريداً إلكترونياً صحيحاً');
+      message('أدخل بريدًا إلكترونيًا صحيحًا');
       return;
     }
 
     if (password.text.length < 6) {
-      _message('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      message('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
 
-    if (signup && birthDate == null) {
-      _message('اختر تاريخ الميلاد');
+    if (create && birthDate == null) {
+      message('اختر تاريخ الميلاد');
       return;
     }
 
-    final age = signup
-        ? calculateAge(birthDate!)
-        : 21;
+    final age = create ? ageFromBirth(birthDate!) : 21;
 
-    if (signup && age < 13) {
-      _message('يجب أن يكون العمر 13 سنة أو أكثر');
+    if (create && age < 13) {
+      message('يجب أن يكون العمر 13 سنة أو أكثر');
       return;
     }
 
-    store.login(
-      signup ? name.text.trim() : 'N User',
+    data.login(
+      create ? name.text.trim() : 'N User',
       u,
       age,
     );
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => const HomeShell(),
-      ),
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const NHome()),
     );
   }
 
-  void _message(String text) {
+  void message(String text) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-      ),
+      SnackBar(content: Text(text)),
     );
-  }
-
-  Future<void> pickBirthDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime(2000),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      helpText: 'اختر تاريخ الميلاد',
-    );
-
-    if (picked != null) {
-      setState(() {
-        birthDate = picked;
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(22),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 460,
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(30),
-                        gradient: const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF00C2FF),
-                            Color(0xFFFF2E78),
-                          ],
-                        ),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'N',
-                          style: TextStyle(
-                            fontSize: 65,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Column(
+                children: [
+                  Container(
+                    width: 105,
+                    height: 105,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF00C8FF),
+                          Color(0xFFFF287A),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      signup
-                          ? 'أنشئ حسابك في N'
-                          : 'مرحباً بعودتك',
-                      style: const TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      signup
-                          ? 'ابدأ رحلتك الاجتماعية'
-                          : 'سجّل الدخول للمتابعة',
-                      style: const TextStyle(
-                        color: Colors.white60,
-                      ),
-                    ),
-                    const SizedBox(height: 26),
-
-                    if (signup) ...[
-                      TextField(
-                        controller: name,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'الاسم الكامل',
-                          prefixIcon:
-                              Icon(Icons.person_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-
-                    TextField(
-                      controller: username,
-                      autocorrect: false,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'اسم المستخدم',
-                        hintText: '@username',
-                        prefixIcon:
-                            Icon(Icons.alternate_email),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: email,
-                      keyboardType:
-                          TextInputType.emailAddress,
-                      textInputAction:
-                          TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'البريد الإلكتروني',
-                        prefixIcon:
-                            Icon(Icons.email_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextField(
-                      controller: password,
-                      obscureText: obscure,
-                      onSubmitted: (_) => submit(),
-                      decoration: InputDecoration(
-                        labelText: 'كلمة المرور',
-                        prefixIcon:
-                            const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() {
-                              obscure = !obscure;
-                            });
-                          },
-                          icon: Icon(
-                            obscure
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    if (signup) ...[
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: pickBirthDate,
-                        icon: const Icon(
-                          Icons.calendar_month,
-                        ),
-                        label: Text(
-                          birthDate == null
-                              ? 'تاريخ الميلاد'
-                              : '${birthDate!.year}/${birthDate!.month}/${birthDate!.day}',
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 20),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: submit,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 14,
-                          ),
-                          child: Text(
-                            signup
-                                ? 'إنشاء الحساب'
-                                : 'تسجيل الدخول',
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          signup = !signup;
-                        });
-                      },
+                    child: const Center(
                       child: Text(
-                        signup
-                            ? 'لدي حساب؟ تسجيل الدخول'
-                            : 'ليس لدي حساب؟ إنشاء حساب',
+                        'N',
+                        style: TextStyle(
+                          fontSize: 68,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    create ? 'انضم إلى N' : 'مرحبًا بعودتك',
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    create
+                        ? 'شبكة اجتماعية جديدة تجمعك بالعالم'
+                        : 'سجل الدخول إلى حسابك',
+                    style: const TextStyle(color: Colors.white60),
+                  ),
+                  const SizedBox(height: 30),
+
+                  if (create)
+                    TextField(
+                      controller: name,
+                      decoration: const InputDecoration(
+                        labelText: 'الاسم',
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                  if (create) const SizedBox(height: 12),
 
-                    const Text(
-                      'اسم المستخدم: 4 أحرف فأكثر • المحتوى +21 مقيد بالعمر',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12,
+                  TextField(
+                    controller: username,
+                    decoration: const InputDecoration(
+                      labelText: 'اسم المستخدم',
+                      hintText: '@username',
+                      prefixIcon: Icon(Icons.alternate_email),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: email,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'البريد الإلكتروني',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: password,
+                    obscureText: passwordHidden,
+                    decoration: InputDecoration(
+                      labelText: 'كلمة المرور',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            passwordHidden = !passwordHidden;
+                          });
+                        },
+                        icon: Icon(
+                          passwordHidden
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  if (create) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: chooseBirthDate,
+                      icon: const Icon(Icons.calendar_month),
+                      label: Text(
+                        birthDate == null
+                            ? 'تاريخ الميلاد'
+                            : '${birthDate!.day}/${birthDate!.month}/${birthDate!.year}',
                       ),
                     ),
                   ],
-                ),
+
+                  const SizedBox(height: 22),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: submit,
+                      child: Padding(
+                        padding: const EdgeInsets.all(15),
+                        child: Text(
+                          create ? 'إنشاء الحساب' : 'تسجيل الدخول',
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  TextButton(
+                    onPressed: () {
+                      setState(() => create = !create);
+                    },
+                    child: Text(
+                      create
+                          ? 'لدي حساب بالفعل'
+                          : 'إنشاء حساب جديد',
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  const Text(
+                    'N • محتوى +21 محمي حسب عمر الحساب',
+                    style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -493,134 +416,85 @@ class _AuthPageState extends State<AuthPage> {
   }
 }
 
-class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+class NHome extends StatefulWidget {
+  const NHome({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  State<NHome> createState() => _NHomeState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _NHomeState extends State<NHome> {
   int index = 0;
 
-  late final List<Widget> pages = [
-    const FeedPage(),
-    const ExplorePage(),
-    const CreatePage(),
-    const NotificationsPage(),
-    const ProfilePage(),
+  final pages = const [
+    HomePage(),
+    ExplorePage(),
+    CreatePage(),
+    NotificationsPage(),
+    ProfilePage(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'N',
-            style: TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.w900,
+    return AnimatedBuilder(
+      animation: data,
+      builder: (_, __) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'N',
+              style: TextStyle(
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+              ),
             ),
+            actions: [
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.search),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.chat_bubble_outline),
+              ),
+            ],
           ),
-          actions: [
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  index = 3;
-                });
-              },
-              icon: Badge(
-                isLabelVisible: store.unread > 0,
-                label: Text('${store.unread}'),
-                child: const Icon(
-                  Icons.notifications_none,
-                ),
+          body: IndexedStack(
+            index: index,
+            children: pages,
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: index,
+            onDestinationSelected: (value) {
+              setState(() => index = value);
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home),
+                label: 'الرئيسية',
               ),
-            ),
-            IconButton(
-              onPressed: () => _messages(context),
-              icon: const Icon(
-                Icons.chat_bubble_outline,
+              NavigationDestination(
+                icon: Icon(Icons.explore_outlined),
+                selectedIcon: Icon(Icons.explore),
+                label: 'استكشاف',
               ),
-            ),
-          ],
-        ),
-        body: IndexedStack(
-          index: index,
-          children: pages,
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: index,
-          onDestinationSelected: (i) {
-            setState(() {
-              index = i;
-            });
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'الرئيسية',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore),
-              label: 'استكشاف',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.add_circle_outline),
-              selectedIcon: Icon(Icons.add_circle),
-              label: 'إنشاء',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.notifications_none),
-              selectedIcon: Icon(Icons.notifications),
-              label: 'التنبيهات',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: 'الملف',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _messages(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (_) {
-        return const SafeArea(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.chat),
-                  title: Text('الرسائل'),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    child: Text('1'),
-                  ),
-                  title: Text('User 1'),
-                  subtitle: Text('لا توجد رسائل جديدة'),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    child: Text('2'),
-                  ),
-                  title: Text('User 2'),
-                  subtitle: Text('لا توجد رسائل جديدة'),
-                ),
-              ],
-            ),
+              NavigationDestination(
+                icon: Icon(Icons.add_circle_outline),
+                selectedIcon: Icon(Icons.add_circle),
+                label: 'إنشاء',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.notifications_none),
+                selectedIcon: Icon(Icons.notifications),
+                label: 'التنبيهات',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'حسابي',
+              ),
+            ],
           ),
         );
       },
@@ -628,8 +502,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-class FeedPage extends StatelessWidget {
-  const FeedPage({super.key});
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -640,73 +514,108 @@ class FeedPage extends StatelessWidget {
           'القصص',
           style: TextStyle(
             fontSize: 21,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: 8,
-            itemBuilder: (_, i) {
-              return Padding(
-                padding: const EdgeInsetsDirectional.only(
-                  end: 12,
-                ),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 31,
-                      child: Text(
-                        i == 0 ? 'N' : '$i',
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      i == 0 ? 'قصتك' : 'User $i',
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        const Text(
-          'لك',
-          style: TextStyle(
-            fontSize: 23,
             fontWeight: FontWeight.w900,
           ),
         ),
-
-        const SizedBox(height: 10),
-
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 105,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: const [
+              Story(label: 'قصتك', own: true),
+              Story(label: 'N Official'),
+              Story(label: 'أحمد'),
+              Story(label: 'محمد'),
+              Story(label: 'سارة'),
+              Story(label: 'نور'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'لك',
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {},
+              child: const Text('الأحدث'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         AnimatedBuilder(
-          animation: store,
+          animation: data,
           builder: (_, __) {
-            final visiblePosts = store.posts
-                .where(
-                  (p) =>
-                      !p.adult ||
-                      store.adultEligible,
-                )
-                .toList();
+            final posts = data.posts.where(
+              (post) => !post.adult || data.adultAllowed,
+            );
 
             return Column(
-              children: visiblePosts
-                  .map(
-                    (p) => PostCard(post: p),
-                  )
+              children: posts
+                  .map((post) => PostCard(post: post))
                   .toList(),
             );
           },
         ),
       ],
+    );
+  }
+}
+
+class Story extends StatelessWidget {
+  const Story({
+    super.key,
+    required this.label,
+    this.own = false,
+  });
+
+  final String label;
+  final bool own;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 82,
+      margin: const EdgeInsetsDirectional.only(end: 12),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: own
+                    ? const [
+                        Color(0xFF00C8FF),
+                        Color(0xFFFF287A),
+                      ]
+                    : const [
+                        Color(0xFF8C52FF),
+                        Color(0xFFFF287A),
+                      ],
+              ),
+            ),
+            child: const CircleAvatar(
+              radius: 31,
+              child: Icon(Icons.person),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -717,43 +626,48 @@ class PostCard extends StatelessWidget {
     required this.post,
   });
 
-  final NPost post;
+  final Post post;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(
-        bottom: 14,
-      ),
+      margin: const EdgeInsets.only(bottom: 14),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(15),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  child: Text(
-                    post.author.isEmpty
-                        ? 'N'
-                        : post.author[0],
-                  ),
+                const CircleAvatar(
+                  radius: 23,
+                  child: Icon(Icons.person),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        post.author,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            post.author,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (post.verified) ...[
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.verified,
+                              size: 17,
+                              color: Colors.lightBlue,
+                            ),
+                          ],
+                        ],
                       ),
                       Text(
-                        post.handle,
+                        '@${post.username}',
                         style: const TextStyle(
                           color: Colors.white54,
                           fontSize: 12,
@@ -764,15 +678,11 @@ class PostCard extends StatelessWidget {
                 ),
                 IconButton(
                   onPressed: () {},
-                  icon: const Icon(
-                    Icons.more_horiz,
-                  ),
+                  icon: const Icon(Icons.more_horiz),
                 ),
               ],
             ),
-
-            const SizedBox(height: 12),
-
+            const SizedBox(height: 13),
             Text(
               post.text,
               style: const TextStyle(
@@ -780,64 +690,54 @@ class PostCard extends StatelessWidget {
                 height: 1.5,
               ),
             ),
-
             const SizedBox(height: 12),
-
             Container(
-              height: 150,
+              height: 190,
+              width: double.infinity,
               decoration: BoxDecoration(
-                borderRadius:
-                    BorderRadius.circular(16),
-                color: const Color(0xFF1A1D25),
+                borderRadius: BorderRadius.circular(18),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF171B28),
+                    Color(0xFF10131B),
+                  ],
+                ),
               ),
               child: const Center(
                 child: Icon(
-                  Icons.image_outlined,
-                  size: 48,
-                  color: Colors.white30,
+                  Icons.play_circle_outline,
+                  size: 54,
+                  color: Colors.white70,
                 ),
               ),
             ),
-
+            const SizedBox(height: 4),
             Row(
               children: [
                 IconButton(
-                  onPressed: () {
-                    store.toggleLike(post);
-                  },
+                  onPressed: () => data.like(post),
                   icon: Icon(
                     post.liked
                         ? Icons.favorite
                         : Icons.favorite_border,
+                    color: post.liked ? Colors.red : null,
                   ),
                 ),
                 Text('${post.likes}'),
-
                 IconButton(
-                  onPressed: () {
-                    _comment(context);
-                  },
-                  icon: const Icon(
-                    Icons.mode_comment_outlined,
-                  ),
+                  onPressed: () => data.comment(post),
+                  icon: const Icon(Icons.mode_comment_outlined),
                 ),
                 Text('${post.comments}'),
-
                 IconButton(
-                  onPressed: () {
-                    _share(context);
-                  },
-                  icon: const Icon(
-                    Icons.share_outlined,
-                  ),
+                  onPressed: () {},
+                  icon: const Icon(Icons.share_outlined),
                 ),
-
                 const Spacer(),
-
                 IconButton(
-                  onPressed: () {
-                    store.toggleSaved(post);
-                  },
+                  onPressed: () => data.save(post),
                   icon: Icon(
                     post.saved
                         ? Icons.bookmark
@@ -851,123 +751,20 @@ class PostCard extends StatelessWidget {
       ),
     );
   }
-
-  void _comment(BuildContext context) {
-    final c = TextEditingController();
-
-    showDialog<void>(
-      context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('التعليقات'),
-          content: TextField(
-            controller: c,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: 'اكتب تعليقك...',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('إلغاء'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (c.text.trim().isNotEmpty) {
-                  store.addComment(post);
-                }
-
-                Navigator.pop(context);
-              },
-              child: const Text('إرسال'),
-            ),
-          ],
-        );
-      },
-    ).whenComplete(c.dispose);
-  }
-
-  void _share(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (_) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              const ListTile(
-                title: Text('مشاركة المنشور'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.link),
-                title: const Text('نسخ الرابط'),
-                onTap: () {
-                  Navigator.pop(context);
-
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'تم تجهيز الرابط',
-                      ),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.send),
-                title: const Text('إرسال إلى صديق'),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
-class ExplorePage extends StatefulWidget {
+class ExplorePage extends StatelessWidget {
   const ExplorePage({super.key});
 
   @override
-  State<ExplorePage> createState() =>
-      _ExplorePageState();
-}
-
-class _ExplorePageState
-    extends State<ExplorePage> {
-  final q = TextEditingController();
-
-  final users = const [
-    'User 1',
-    'User 2',
-    'User 3',
-    'User 4',
-    'User 5',
-  ];
-
-  @override
-  void dispose() {
-    q.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final filtered = users
-        .where(
-          (u) =>
-              q.text.isEmpty ||
-              u.toLowerCase().contains(
-                    q.text.toLowerCase(),
-                  ),
-        )
-        .toList();
+    const users = [
+      ['N Official', '@n'],
+      ['N News', '@nnews'],
+      ['Ahmed', '@ahmed'],
+      ['Sara', '@sara'],
+      ['Noor', '@noor'],
+    ];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -975,95 +772,71 @@ class _ExplorePageState
         const Text(
           'استكشاف',
           style: TextStyle(
-            fontSize: 28,
+            fontSize: 29,
             fontWeight: FontWeight.w900,
           ),
         ),
-        const SizedBox(height: 14),
-
-        TextField(
-          controller: q,
-          onChanged: (_) {
-            setState(() {});
-          },
-          decoration: const InputDecoration(
+        const SizedBox(height: 15),
+        const TextField(
+          decoration: InputDecoration(
             hintText: 'ابحث عن أشخاص أو محتوى',
             prefixIcon: Icon(Icons.search),
           ),
         ),
-
-        const SizedBox(height: 22),
-
+        const SizedBox(height: 24),
         const Text(
           'حسابات مقترحة',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 21,
             fontWeight: FontWeight.bold,
           ),
         ),
-
         const SizedBox(height: 8),
-
-        ...filtered.map(
-          (u) {
-            final handle =
-                '@${u.toLowerCase().replaceAll(' ', '')}';
-
-            final following =
-                store.following.contains(handle);
+        ...users.map(
+          (user) {
+            final followed = data.following.contains(user[1]);
 
             return Card(
-              margin: const EdgeInsets.only(
-                bottom: 8,
-              ),
+              margin: const EdgeInsets.only(bottom: 9),
               child: ListTile(
                 leading: const CircleAvatar(
                   child: Icon(Icons.person),
                 ),
-                title: Text(u),
-                subtitle: Text(handle),
+                title: Text(user[0]),
+                subtitle: Text(user[1]),
                 trailing: FilledButton(
-                  onPressed: () {
-                    setState(() {
-                      store.toggleFollow(handle);
-                    });
-                  },
+                  onPressed: () => data.follow(user[1]),
                   child: Text(
-                    following
-                        ? 'متابَع'
-                        : 'متابعة',
+                    followed ? 'متابَع' : 'متابعة',
                   ),
                 ),
               ),
             );
           },
         ),
-
-        const SizedBox(height: 18),
-
+        const SizedBox(height: 22),
         const Text(
-          'المحتوى الرائج',
+          'الرائج الآن',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 21,
             fontWeight: FontWeight.bold,
           ),
         ),
-
+        const SizedBox(height: 8),
         ...List.generate(
-          5,
-          (i) {
-            return ListTile(
-              leading: const Icon(
-                Icons.trending_up,
+          7,
+          (i) => ListTile(
+            leading: Text(
+              '${i + 1}',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
-              title: Text(
-                '#موضوع_رائج_${i + 1}',
-              ),
-              subtitle: Text(
-                '${1200 + i * 500} منشور',
-              ),
-            );
-          },
+            ),
+            title: Text('#موضوع_رائج_${i + 1}'),
+            subtitle: Text('${2500 + i * 731} منشور'),
+            trailing: const Icon(Icons.trending_up),
+          ),
         ),
       ],
     );
@@ -1074,21 +847,47 @@ class CreatePage extends StatefulWidget {
   const CreatePage({super.key});
 
   @override
-  State<CreatePage> createState() =>
-      _CreatePageState();
+  State<CreatePage> createState() => _CreatePageState();
 }
 
-class _CreatePageState
-    extends State<CreatePage> {
-  final c = TextEditingController();
+class _CreatePageState extends State<CreatePage> {
+  final controller = TextEditingController();
 
   bool adult = false;
   String visibility = 'عام';
 
   @override
   void dispose() {
-    c.dispose();
+    controller.dispose();
     super.dispose();
+  }
+
+  void publish() {
+    final text = controller.text.trim();
+
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اكتب شيئًا قبل النشر'),
+        ),
+      );
+      return;
+    }
+
+    data.createPost(
+      text,
+      adult: adult,
+    );
+
+    controller.clear();
+
+    setState(() => adult = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تم نشر المنشور بنجاح'),
+      ),
+    );
   }
 
   @override
@@ -1096,82 +895,75 @@ class _CreatePageState
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'إنشاء منشور',
+            'إنشاء',
             style: TextStyle(
-              fontSize: 28,
+              fontSize: 29,
               fontWeight: FontWeight.w900,
             ),
           ),
-
           const SizedBox(height: 16),
-
-          Expanded(
-            child: TextField(
-              controller: c,
-              maxLines: null,
-              expands: true,
-              textAlignVertical:
-                  TextAlignVertical.top,
-              maxLength: 1000,
-              decoration: const InputDecoration(
-                hintText:
-                    'ماذا تريد أن تشارك؟',
-                contentPadding:
-                    EdgeInsets.all(16),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
           Row(
             children: [
-              const Text('الخصوصية'),
-              const SizedBox(width: 12),
-              DropdownButton<String>(
-                value: visibility,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'عام',
-                    child: Text('عام'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'المتابعون',
-                    child: Text('المتابعون'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'خاص',
-                    child: Text('خاص'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-
-                  setState(() {
-                    visibility = v;
-                  });
-                },
+              const CircleAvatar(
+                radius: 24,
+                child: Icon(Icons.person),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                data.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
-
+          const SizedBox(height: 14),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              maxLength: 2000,
+              decoration: const InputDecoration(
+                hintText: 'ماذا تريد أن تشارك مع N؟',
+                contentPadding: EdgeInsets.all(17),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('صورة'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.videocam_outlined),
+                  label: const Text('فيديو'),
+                ),
+              ),
+            ],
+          ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              'محتوى للبالغين +21',
-            ),
+            title: const Text('+21'),
             subtitle: const Text(
-              'لا يظهر إلا للحسابات بعمر 21 سنة فأكثر',
+              'محتوى للبالغين بعمر 21 سنة فأكثر',
             ),
             value: adult,
-            onChanged: (v) {
-              if (v && !store.adultEligible) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(
+            onChanged: (value) {
+              if (value && !data.adultAllowed) {
+                ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
                       'هذا الخيار متاح للحسابات بعمر 21 سنة فأكثر',
@@ -1181,98 +973,41 @@ class _CreatePageState
                 return;
               }
 
-              setState(() {
-                adult = v;
-              });
+              setState(() => adult = value);
             },
           ),
-
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'منتقي الصور يحتاج إضافة مكتبة الوسائط في نسخة الإنتاج',
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.image_outlined,
-                  ),
-                  label: const Text('صورة'),
-                ),
+          DropdownButtonFormField<String>(
+            initialValue: visibility,
+            decoration: const InputDecoration(
+              labelText: 'الخصوصية',
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'عام',
+                child: Text('عام'),
               ),
-
-              const SizedBox(width: 10),
-
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'منتقي الفيديو يحتاج إضافة مكتبة الوسائط في نسخة الإنتاج',
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.videocam_outlined,
-                  ),
-                  label: const Text('فيديو'),
-                ),
+              DropdownMenuItem(
+                value: 'المتابعون',
+                child: Text('المتابعون'),
+              ),
+              DropdownMenuItem(
+                value: 'خاص',
+                child: Text('خاص'),
               ),
             ],
-          ),
-
-          const SizedBox(height: 10),
-
-          FilledButton.icon(
-            onPressed: () {
-              final text = c.text.trim();
-
-              if (text.isEmpty) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'اكتب شيئاً قبل النشر',
-                    ),
-                  ),
-                );
-                return;
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => visibility = value);
               }
-
-              store.addPost(
-                text,
-                adult: adult,
-              );
-
-              c.clear();
-
-              setState(() {
-                adult = false;
-              });
-
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'تم نشر المنشور',
-                  ),
-                ),
-              );
             },
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: publish,
             icon: const Icon(Icons.send),
             label: const Padding(
               padding: EdgeInsets.all(13),
-              child: Text('نشر المنشور'),
+              child: Text('نشر'),
             ),
           ),
         ],
@@ -1292,42 +1027,65 @@ class NotificationsPage extends StatelessWidget {
         const Text(
           'التنبيهات',
           style: TextStyle(
-            fontSize: 28,
+            fontSize: 29,
             fontWeight: FontWeight.w900,
           ),
         ),
-        const SizedBox(height: 16),
-
-        const ListTile(
-          leading: CircleAvatar(
-            child: Icon(Icons.favorite),
-          ),
-          title: Text('الإعجابات'),
-          subtitle: Text(
-            'ستظهر هنا الإعجابات على منشوراتك.',
-          ),
+        const SizedBox(height: 18),
+        const NotificationItem(
+          icon: Icons.favorite,
+          title: 'الإعجابات',
+          subtitle: 'لديك تفاعلات جديدة على منشوراتك',
         ),
-
-        const ListTile(
-          leading: CircleAvatar(
-            child: Icon(Icons.person_add),
-          ),
-          title: Text('المتابعات'),
-          subtitle: Text(
-            'ستظهر هنا المتابعات الجديدة.',
-          ),
+        const NotificationItem(
+          icon: Icons.person_add,
+          title: 'متابعون جدد',
+          subtitle: 'هناك أشخاص جدد يتابعونك',
         ),
-
-        const ListTile(
-          leading: CircleAvatar(
-            child: Icon(Icons.comment),
-          ),
-          title: Text('التعليقات'),
-          subtitle: Text(
-            'ستظهر هنا التعليقات الجديدة.',
-          ),
+        const NotificationItem(
+          icon: Icons.mode_comment,
+          title: 'التعليقات',
+          subtitle: 'لديك تعليقات جديدة',
+        ),
+        const NotificationItem(
+          icon: Icons.celebration,
+          title: 'أخبار N',
+          subtitle: 'اكتشف الميزات الجديدة في N',
         ),
       ],
+    );
+  }
+}
+
+class NotificationItem extends StatelessWidget {
+  const NotificationItem({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: CircleAvatar(
+          child: Icon(icon),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_left),
+      ),
     );
   }
 }
@@ -1340,155 +1098,129 @@ class ProfilePage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const SizedBox(height: 12),
-
+        const SizedBox(height: 10),
         const Center(
           child: CircleAvatar(
-            radius: 54,
-            child: Text(
-              'N',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-              ),
+            radius: 55,
+            child: Icon(
+              Icons.person,
+              size: 52,
             ),
           ),
         ),
-
-        const SizedBox(height: 12),
-
+        const SizedBox(height: 13),
         Center(
           child: Text(
-            store.name,
+            data.name,
             style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ),
-
         Center(
           child: Text(
-            '@${store.username}',
+            '@${data.username}',
             style: const TextStyle(
               color: Colors.white54,
             ),
           ),
         ),
-
-        const SizedBox(height: 20),
-
+        const SizedBox(height: 22),
         const Row(
-          mainAxisAlignment:
-              MainAxisAlignment.spaceEvenly,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            Stat(
-              n: '0',
-              t: 'المنشورات',
+            ProfileStat(
+              number: '0',
+              label: 'المنشورات',
             ),
-            Stat(
-              n: '0',
-              t: 'المتابعون',
+            ProfileStat(
+              number: '0',
+              label: 'المتابعون',
             ),
-            Stat(
-              n: '0',
-              t: 'المتابَعون',
+            ProfileStat(
+              number: '0',
+              label: 'المتابَعون',
             ),
           ],
         ),
-
-        const SizedBox(height: 22),
-
+        const SizedBox(height: 24),
         Card(
-          child: ListTile(
-            leading: const Icon(
-              Icons.verified_user_outlined,
-            ),
-            title: const Text(
-              'حالة الحساب',
-            ),
-            subtitle: Text(
-              'العمر المسجل: ${store.age} سنة',
-            ),
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: const Text('الحساب'),
+                subtitle: Text(
+                  'العمر المسجل: ${data.age} سنة',
+                ),
+                trailing: const Icon(Icons.chevron_left),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.security),
+                title: Text('الأمان والخصوصية'),
+                trailing: Icon(Icons.chevron_left),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.shield_outlined),
+                title: Text('الحماية العمرية'),
+                subtitle: Text(
+                  'محتوى +21 محمي بحسب عمر الحساب',
+                ),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.settings_outlined),
+                title: Text('الإعدادات'),
+                trailing: Icon(Icons.chevron_left),
+              ),
+            ],
           ),
         ),
-
-        const Card(
-          child: ListTile(
-            leading: Icon(
-              Icons.shield_outlined,
-            ),
-            title: Text(
-              'الحماية العمرية',
-            ),
-            subtitle: Text(
-              'المحتوى المصنف +21 محمي بحسب العمر',
-            ),
-          ),
-        ),
-
-        const Card(
-          child: ListTile(
-            leading: Icon(
-              Icons.lock_outline,
-            ),
-            title: Text(
-              'الخصوصية والأمان',
-            ),
-            subtitle: Text(
-              'إعدادات الحساب والخصوصية',
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
+        const SizedBox(height: 14),
         OutlinedButton.icon(
           onPressed: () {
-            store.logout();
-
-            Navigator.of(context)
-                .pushAndRemoveUntil(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    const AuthPage(),
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const LoginPage(),
               ),
               (_) => false,
             );
           },
           icon: const Icon(Icons.logout),
-          label: const Text(
-            'تسجيل الخروج',
-          ),
+          label: const Text('تسجيل الخروج'),
         ),
       ],
     );
   }
 }
 
-class Stat extends StatelessWidget {
-  const Stat({
+class ProfileStat extends StatelessWidget {
+  const ProfileStat({
     super.key,
-    required this.n,
-    required this.t,
+    required this.number,
+    required this.label,
   });
 
-  final String n;
-  final String t;
+  final String number;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Text(
-          n,
+          number,
           style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
+            fontSize: 23,
+            fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 3),
-        Text(t),
+        Text(label),
       ],
     );
   }
