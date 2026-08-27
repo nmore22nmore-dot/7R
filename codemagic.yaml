@@ -2,58 +2,13 @@ workflows:
 n-android-release:
 name: N Android Release
 max_build_duration: 30
+instance_type: mac_mini_m2
 
 environment:
   flutter: stable
 
 scripts:
-  - name: Prepare N Flutter project
-    script: |
-      set -e
-
-      rm -rf android
-      rm -rf lib
-      rm -rf assets
-      rm -f pubspec.yaml
-      rm -f README.md
-
-      rm -rf /tmp/n_final
-      mkdir -p /tmp/n_final
-
-      unzip -o N_FINAL_RELEASE_GRADLE_FIXED.zip -d /tmp/n_final
-
-      echo "===== ZIP CONTENTS ====="
-      find /tmp/n_final -maxdepth 3 -type f | head -100
-
-      cp -r /tmp/n_final/lib .
-      cp -r /tmp/n_final/assets .
-      cp /tmp/n_final/pubspec.yaml .
-
-      if [ -f /tmp/n_final/README.md ]; then
-        cp /tmp/n_final/README.md .
-      fi
-
-      echo "===== PROJECT FILES ====="
-      ls -la
-      echo "===== LIB ====="
-      ls -la lib
-
-  - name: Create clean Android project
-    script: |
-      set -e
-
-      echo "Creating fresh Android configuration..."
-
-      flutter create \
-        --platforms=android \
-        --org com.n \
-        --project-name n \
-        .
-
-      echo "===== ANDROID CREATED ====="
-      find android -maxdepth 3 -type f | sort
-
-  - name: Configure local.properties
+  - name: Set up Android local.properties
     script: |
       set -e
 
@@ -63,67 +18,63 @@ scripts:
       echo "===== local.properties ====="
       cat "$CM_BUILD_DIR/android/local.properties"
 
-  - name: Configure Android Gradle
+  - name: Verify project structure
     script: |
       set -e
 
+      echo "===== ROOT ====="
+      ls -la
+
+      echo "===== ANDROID ====="
+      ls -la android
+
+      echo "===== LIB ====="
+      ls -la lib
+
+      test -f pubspec.yaml
+      test -d lib
+      test -d android
+      test -f android/settings.gradle
+      test -f android/app/build.gradle
+
+      echo "PROJECT STRUCTURE OK"
+
+  - name: Configure Gradle
+    script: |
+      set -e
+
+      python3 - <<'PY'
+      from pathlib import Path
+
+      p = Path("android/settings.gradle")
+      text = p.read_text()
+
+      text = text.replace(
+          'id "com.android.application" version "8.7.3" apply false',
+          'id "com.android.application" version "8.11.1" apply false'
+      )
+
+      text = text.replace(
+          'id "com.android.application" version "8.7.3" apply false',
+          'id "com.android.application" version "8.11.1" apply false'
+      )
+
+      text = text.replace(
+          'repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)',
+          'repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)'
+      )
+
+      p.write_text(text)
+      PY
+
       mkdir -p android/gradle/wrapper
 
-      cat > android/settings.gradle <<'EOF'
-      pluginManagement {
-          def flutterSdkPath = {
-              def properties = new Properties()
-              def localPropertiesFile = file("local.properties")
-
-              if (!localPropertiesFile.exists()) {
-                  throw new GradleException("local.properties is missing")
-              }
-
-              localPropertiesFile.withInputStream {
-                  properties.load(it)
-              }
-
-              def flutterSdkPath = properties.getProperty("flutter.sdk")
-
-              if (flutterSdkPath == null) {
-                  throw new GradleException("flutter.sdk not set in local.properties")
-              }
-
-              return flutterSdkPath
-          }()
-
-          includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
-
-          repositories {
-              google()
-              mavenCentral()
-              gradlePluginPortal()
-              maven {
-                  url "https://storage.googleapis.com/download.flutter.io"
-              }
-          }
-      }
-
-      plugins {
-          id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-          id "com.android.application" version "8.11.1" apply false
-          id "org.jetbrains.kotlin.android" version "2.1.0" apply false
-      }
-
-      dependencyResolutionManagement {
-          repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-
-          repositories {
-              google()
-              mavenCentral()
-              maven {
-                  url "https://storage.googleapis.com/download.flutter.io"
-              }
-          }
-      }
-
-      rootProject.name = "N"
-      include ":app"
+      cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
+      distributionBase=GRADLE_USER_HOME
+      distributionPath=wrapper/dists
+      distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.1-bin.zip
+      zipStoreBase=GRADLE_USER_HOME
+      zipStorePath=wrapper/dists
       EOF
 
       cat > android/gradle.properties <<'EOF'
@@ -134,56 +85,14 @@ scripts:
       android.builtInKotlin=false
       EOF
 
-      cat > android/app/build.gradle <<'EOF'
-      plugins {
-          id "com.android.application"
-          id "org.jetbrains.kotlin.android"
-          id "dev.flutter.flutter-gradle-plugin"
-      }
-
-      android {
-          namespace "com.n.app"
-          compileSdk 35
-
-          defaultConfig {
-              applicationId "com.n.app"
-              minSdk 23
-              targetSdk 35
-              versionCode 1
-              versionName "1.0.0"
-          }
-
-          compileOptions {
-              sourceCompatibility JavaVersion.VERSION_17
-              targetCompatibility JavaVersion.VERSION_17
-          }
-
-          kotlinOptions {
-              jvmTarget = "17"
-          }
-      }
-
-      flutter {
-          source "../.."
-      }
-      EOF
-
-      cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
-      distributionBase=GRADLE_USER_HOME
-      distributionPath=wrapper/dists
-      distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.1-bin.zip
-      zipStoreBase=GRADLE_USER_HOME
-      zipStorePath=wrapper/dists
-      EOF
-
       echo "===== AGP ====="
-      grep 'com.android.application' android/settings.gradle
-
-      echo "===== GRADLE ====="
-      grep 'distributionUrl' android/gradle/wrapper/gradle-wrapper.properties
+      grep "com.android.application" android/settings.gradle
 
       echo "===== REPOSITORIES ====="
-      grep 'repositoriesMode' android/settings.gradle
+      grep "repositoriesMode" android/settings.gradle
+
+      echo "===== GRADLE ====="
+      grep "distributionUrl" android/gradle/wrapper/gradle-wrapper.properties
 
   - name: Get Flutter packages
     script: |
@@ -192,38 +101,29 @@ scripts:
       flutter clean
       flutter pub get
 
-  - name: Verify configuration
+  - name: Verify dependencies
     script: |
       set -e
 
       echo "===== FLUTTER ====="
       flutter --version
 
-      echo "===== AGP ====="
-      grep 'com.android.application' android/settings.gradle
-
-      echo "===== GRADLE ====="
-      grep 'distributionUrl' android/gradle/wrapper/gradle-wrapper.properties
-
-      echo "===== REPOSITORIES ====="
-      grep 'repositoriesMode' android/settings.gradle
-
-      echo "===== LOCAL PROPERTIES ====="
-      cat android/local.properties
+      echo "===== PUBSPEC ====="
+      head -80 pubspec.yaml
 
       echo "===== CHECK OLD AGP ====="
       if grep -R "8.7.3" android --exclude-dir=.gradle; then
-          echo "ERROR: AGP 8.7.3 FOUND"
+          echo "ERROR: AGP 8.7.3 STILL EXISTS"
           exit 1
       fi
 
-      echo "===== CHECK PROJECT ====="
-      test -f pubspec.yaml
-      test -d lib
-      test -f android/local.properties
-      test -f android/app/build.gradle
+      echo "===== CHECK REPOSITORIES ====="
+      grep "RepositoriesMode.PREFER_SETTINGS" android/settings.gradle
 
-      echo "CONFIGURATION OK"
+      echo "===== CHECK LOCAL PROPERTIES ====="
+      test -f android/local.properties
+
+      echo "ALL CONFIGURATION CHECKS PASSED"
 
   - name: Analyze Dart
     script: |
@@ -245,13 +145,10 @@ scripts:
 
       APK="build/app/outputs/flutter-apk/app-release.apk"
 
-      if [ ! -f "$APK" ]; then
-          echo "ERROR: APK was not created."
-          exit 1
-      fi
+      test -f "$APK"
 
       echo "======================================"
-      echo "N APK BUILD SUCCESSFUL"
+      echo "N APK CREATED SUCCESSFULLY"
       echo "======================================"
 
       ls -lh "$APK"
