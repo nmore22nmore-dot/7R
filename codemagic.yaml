@@ -1,157 +1,81 @@
 workflows:
-n-android-release:
-name: N Android Release
-max_build_duration: 30
-instance_type: mac_mini_m2
+  n-android-release:
+    name: N Android Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
 
-environment:
-  flutter: stable
+    environment:
+      flutter: stable
 
-scripts:
-  - name: Set up Android local.properties
-    script: |
-      set -e
+    scripts:
+      - name: Set up Flutter local.properties
+        script: |
+          set -e
 
-      echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
-      echo "sdk.dir=$ANDROID_SDK_ROOT" >> "$CM_BUILD_DIR/android/local.properties"
+          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> "$CM_BUILD_DIR/android/local.properties"
 
-      echo "===== local.properties ====="
-      cat "$CM_BUILD_DIR/android/local.properties"
+          echo "===== local.properties ====="
+          cat "$CM_BUILD_DIR/android/local.properties"
 
-  - name: Verify project structure
-    script: |
-      set -e
+      - name: Verify Flutter project
+        script: |
+          set -e
 
-      echo "===== ROOT ====="
-      ls -la
+          echo "===== PROJECT ROOT ====="
+          pwd
+          ls -la
 
-      echo "===== ANDROID ====="
-      ls -la android
+          test -f pubspec.yaml
+          test -d lib
+          test -d android
+          test -f android/settings.gradle
+          test -f android/app/build.gradle
 
-      echo "===== LIB ====="
-      ls -la lib
+          echo "PROJECT STRUCTURE OK"
 
-      test -f pubspec.yaml
-      test -d lib
-      test -d android
-      test -f android/settings.gradle
-      test -f android/app/build.gradle
+      - name: Get Flutter packages
+        script: |
+          set -e
 
-      echo "PROJECT STRUCTURE OK"
+          flutter clean
+          flutter pub get
 
-  - name: Configure Gradle
-    script: |
-      set -e
+      - name: Verify Flutter
+        script: |
+          set -e
 
-      python3 - <<'PY'
-      from pathlib import Path
+          flutter --version
+          flutter doctor -v
 
-      p = Path("android/settings.gradle")
-      text = p.read_text()
+      - name: Analyze Dart
+        script: |
+          set -e
 
-      text = text.replace(
-          'id "com.android.application" version "8.7.3" apply false',
-          'id "com.android.application" version "8.11.1" apply false'
-      )
+          flutter analyze
 
-      text = text.replace(
-          'id "com.android.application" version "8.7.3" apply false',
-          'id "com.android.application" version "8.11.1" apply false'
-      )
+      - name: Build release APK
+        script: |
+          set -e
 
-      text = text.replace(
-          'repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)',
-          'repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)'
-      )
+          flutter build apk --release
 
-      p.write_text(text)
-      PY
+      - name: Verify APK
+        script: |
+          set -e
 
-      mkdir -p android/gradle/wrapper
+          APK="build/app/outputs/flutter-apk/app-release.apk"
 
-      cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
-      distributionBase=GRADLE_USER_HOME
-      distributionPath=wrapper/dists
-      distributionUrl=https\://services.gradle.org/distributions/gradle-8.14.1-bin.zip
-      zipStoreBase=GRADLE_USER_HOME
-      zipStorePath=wrapper/dists
-      EOF
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not created."
+            exit 1
+          fi
 
-      cat > android/gradle.properties <<'EOF'
-      org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
-      android.useAndroidX=true
-      android.enableJetifier=true
-      android.newDsl=false
-      android.builtInKotlin=false
-      EOF
+          echo "======================================"
+          echo "N APK CREATED SUCCESSFULLY"
+          echo "======================================"
 
-      echo "===== AGP ====="
-      grep "com.android.application" android/settings.gradle
+          ls -lh "$APK"
 
-      echo "===== REPOSITORIES ====="
-      grep "repositoriesMode" android/settings.gradle
-
-      echo "===== GRADLE ====="
-      grep "distributionUrl" android/gradle/wrapper/gradle-wrapper.properties
-
-  - name: Get Flutter packages
-    script: |
-      set -e
-
-      flutter clean
-      flutter pub get
-
-  - name: Verify dependencies
-    script: |
-      set -e
-
-      echo "===== FLUTTER ====="
-      flutter --version
-
-      echo "===== PUBSPEC ====="
-      head -80 pubspec.yaml
-
-      echo "===== CHECK OLD AGP ====="
-      if grep -R "8.7.3" android --exclude-dir=.gradle; then
-          echo "ERROR: AGP 8.7.3 STILL EXISTS"
-          exit 1
-      fi
-
-      echo "===== CHECK REPOSITORIES ====="
-      grep "RepositoriesMode.PREFER_SETTINGS" android/settings.gradle
-
-      echo "===== CHECK LOCAL PROPERTIES ====="
-      test -f android/local.properties
-
-      echo "ALL CONFIGURATION CHECKS PASSED"
-
-  - name: Analyze Dart
-    script: |
-      set -e
-
-      flutter analyze
-
-  - name: Build release APK
-    script: |
-      set -e
-
-      flutter build apk \
-        --release \
-        --android-skip-build-dependency-validation
-
-  - name: Verify APK
-    script: |
-      set -e
-
-      APK="build/app/outputs/flutter-apk/app-release.apk"
-
-      test -f "$APK"
-
-      echo "======================================"
-      echo "N APK CREATED SUCCESSFULLY"
-      echo "======================================"
-
-      ls -lh "$APK"
-
-artifacts:
-  - build/app/outputs/flutter-apk/*.apk
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
