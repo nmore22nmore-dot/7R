@@ -3,6 +3,9 @@ name: Extract N project
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   extract:
     runs-on: ubuntu-latest
