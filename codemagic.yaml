@@ -76,7 +76,7 @@ workflows:
           }
 
           dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+              repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
 
               repositories {
                   google()
@@ -177,7 +177,10 @@ workflows:
           echo "===== GRADLE ====="
           grep 'distributionUrl' android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Create Flutter local configuration
+          echo "===== REPOSITORY MODE ====="
+          grep 'repositoriesMode' android/settings.gradle
+
+      - name: Flutter packages
         script: |
           set -e
 
@@ -190,10 +193,10 @@ workflows:
           set -e
 
           echo "===== SETTINGS ====="
-          grep 'com.android.application' android/settings.gradle
+          cat android/settings.gradle
 
           echo "===== APP BUILD ====="
-          grep -A3 '^plugins' android/app/build.gradle
+          cat android/app/build.gradle
 
           echo "===== GRADLE PROPERTIES ====="
           cat android/gradle.properties
@@ -201,7 +204,8 @@ workflows:
           echo "===== GRADLE WRAPPER ====="
           cat android/gradle/wrapper/gradle-wrapper.properties
 
-          echo "===== SEARCH FOR OLD AGP 8.7.3 ====="
+          echo "===== CHECK OLD AGP ====="
+
           if grep -R "8.7.3" android --exclude-dir=.gradle; then
               echo "ERROR: OLD AGP 8.7.3 FOUND"
               exit 1
@@ -209,9 +213,16 @@ workflows:
 
           echo "SUCCESS: AGP 8.7.3 NOT FOUND"
 
+          echo "===== CHECK REPOSITORY MODE ====="
+
+          grep "repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)" android/settings.gradle
+
+          echo "SUCCESS: PREFER_SETTINGS ENABLED"
+
       - name: Analyze Dart code
         script: |
           set -e
+
           flutter analyze
 
       - name: Build release APK
@@ -226,13 +237,18 @@ workflows:
         script: |
           set -e
 
-          if [ ! -f build/app/outputs/flutter-apk/app-release.apk ]; then
+          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK_PATH" ]; then
               echo "ERROR: APK was not created."
               exit 1
           fi
 
-          echo "APK successfully created:"
-          ls -lh build/app/outputs/flutter-apk/app-release.apk
+          echo "======================================"
+          echo "APK BUILD SUCCESSFUL"
+          echo "======================================"
+
+          ls -lh "$APK_PATH"
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
