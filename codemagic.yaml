@@ -206,6 +206,5 @@ workflows:
         script: |
           set -e
           flutter build apk --release
-
-    artifacts:
+     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
