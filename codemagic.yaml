@@ -55,13 +55,26 @@ workflows:
           )
 
           p.write_text(text)
-          print("Gradle repository mode fixed successfully.")
+          print("settings.gradle fixed")
           PY
 
       - name: Flutter packages
         script: |
           set -e
           flutter pub get
+
+      - name: Force legacy Gradle compatibility
+        script: |
+          set -e
+
+          cat >> android/gradle.properties <<'EOF'
+
+          android.newDsl=false
+          android.builtInKotlin=false
+          EOF
+
+          echo "Gradle compatibility flags added:"
+          cat android/gradle.properties
 
       - name: Analyze Dart code
         script: |
