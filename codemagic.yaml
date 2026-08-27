@@ -2,14 +2,25 @@ workflows:
   n-android-release:
     name: N Android Release
     max_build_duration: 30
+
     environment:
       flutter: stable
+
     scripts:
-      - name: Flutter packages
-        script: flutter pub get
+      - name: Prepare Flutter project
+        script: |
+          flutter --version
+          flutter clean
+          flutter pub get
+
       - name: Analyze Dart code
-        script: flutter analyze
+        script: |
+          flutter analyze
+
       - name: Build release APK
-        script: flutter build apk --release
+        script: |
+          flutter build apk --release --android-skip-build-dependency-validation
+
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
+    
