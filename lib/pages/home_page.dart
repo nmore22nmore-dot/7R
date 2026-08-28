@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../n_data.dart';
 
 class HomePage extends StatefulWidget {
@@ -10,35 +9,31 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int selectedIndex = 0;
+  int index = 0;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: data,
-      builder: (context, _) {
+      builder: (_, __) {
         return Scaffold(
           backgroundColor: const Color(0xFF07080D),
           body: IndexedStack(
-            index: selectedIndex,
+            index: index,
             children: const [
-              _HomeFeedPage(),
-              _ExplorePage(),
-              _CreatePage(),
-              _MessagesPage(),
-              _ProfilePage(),
+              FeedPage(),
+              ExplorePage(),
+              CreatePage(),
+              MessagesPage(),
+              ProfilePage(),
             ],
           ),
           bottomNavigationBar: NavigationBar(
-            height: 72,
+            height: 68,
             backgroundColor: const Color(0xFF090A10),
             indicatorColor: const Color(0xFF182A35),
-            selectedIndex: selectedIndex,
-            onDestinationSelected: (index) {
-              setState(() {
-                selectedIndex = index;
-              });
-            },
+            selectedIndex: index,
+            onDestinationSelected: (v) => setState(() => index = v),
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -51,13 +46,13 @@ class _HomePageState extends State<HomePage> {
                 label: 'استكشاف',
               ),
               NavigationDestination(
-                icon: Icon(Icons.add_circle_outline),
-                selectedIcon: Icon(Icons.add_circle),
+                icon: Icon(Icons.add_box_outlined),
+                selectedIcon: Icon(Icons.add_box),
                 label: 'إنشاء',
               ),
               NavigationDestination(
-                icon: Icon(Icons.chat_bubble_outline),
-                selectedIcon: Icon(Icons.chat_bubble),
+                icon: Icon(Icons.chat_outlined),
+                selectedIcon: Icon(Icons.chat),
                 label: 'الرسائل',
               ),
               NavigationDestination(
@@ -73,12 +68,12 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/* =========================================================
-   HOME
-========================================================= */
+/* =========================
+   FEED
+========================= */
 
-class _HomeFeedPage extends StatelessWidget {
-  const _HomeFeedPage();
+class FeedPage extends StatelessWidget {
+  const FeedPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -88,9 +83,8 @@ class _HomeFeedPage extends StatelessWidget {
       child: CustomScrollView(
         slivers: [
           SliverAppBar(
-            backgroundColor: const Color(0xFF07080D),
-            surfaceTintColor: Colors.transparent,
             floating: true,
+            backgroundColor: const Color(0xFF07080D),
             title: const Text(
               'N',
               style: TextStyle(
@@ -100,37 +94,24 @@ class _HomeFeedPage extends StatelessWidget {
             ),
             actions: [
               IconButton(
-                onPressed: () {},
                 icon: const Icon(Icons.live_tv_outlined),
+                onPressed: () => _live(context),
               ),
               IconButton(
-                onPressed: () {},
                 icon: const Icon(Icons.notifications_none),
+                onPressed: () {},
               ),
             ],
           ),
-          SliverToBoxAdapter(
-            child: _StoriesSection(),
-          ),
+          SliverToBoxAdapter(child: Stories()),
           if (posts.isEmpty)
             const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Text(
-                  'لا توجد منشورات بعد',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 18,
-                  ),
-                ),
-              ),
+              child: Center(child: Text('لا توجد منشورات')),
             )
           else
             SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  return _PostCard(post: posts[index]);
-                },
+                (_, i) => PostCard(post: posts[i]),
                 childCount: posts.length,
               ),
             ),
@@ -138,22 +119,55 @@ class _HomeFeedPage extends StatelessWidget {
       ),
     );
   }
+
+  void _live(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF11131A),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.live_tv, size: 50),
+              const SizedBox(height: 12),
+              const Text(
+                'البث المباشر',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text('ميزة البث المباشر جاهزة للربط بالخادم.'),
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('حسنًا'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/* =========================================================
+/* =========================
    STORIES
-========================================================= */
+========================= */
 
-class _StoriesSection extends StatelessWidget {
-  _StoriesSection();
+class Stories extends StatelessWidget {
+  Stories({super.key});
 
-  final List<Map<String, String>> stories = const [
-    {'name': 'قصتك', 'username': 'your_story'},
-    {'name': 'N Official', 'username': 'n'},
-    {'name': 'Ahmed', 'username': 'ahmed'},
-    {'name': 'Sara', 'username': 'sara'},
-    {'name': 'محمد', 'username': 'mohammed'},
-    {'name': 'علي', 'username': 'ali'},
+  final stories = const [
+    'قصتك',
+    'N Official',
+    'Ahmed',
+    'Sara',
+    'محمد',
+    'علي',
   ];
 
   @override
@@ -161,16 +175,11 @@ class _StoriesSection extends StatelessWidget {
     return SizedBox(
       height: 118,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 10,
-        ),
+        padding: const EdgeInsets.all(12),
         scrollDirection: Axis.horizontal,
         itemCount: stories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemBuilder: (context, index) {
-          final story = stories[index];
-
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, i) {
           return SizedBox(
             width: 70,
             child: Column(
@@ -190,18 +199,14 @@ class _StoriesSection extends StatelessWidget {
                   ),
                   child: Container(
                     decoration: const BoxDecoration(
-                      color: Color(0xFF151720),
                       shape: BoxShape.circle,
+                      color: Color(0xFF181B25),
                     ),
                     child: Center(
-                      child: index == 0
-                          ? const Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: 28,
-                            )
+                      child: i == 0
+                          ? const Icon(Icons.add)
                           : Text(
-                              story['name']!.substring(0, 1),
+                              stories[i].substring(0, 1),
                               style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
@@ -210,9 +215,9 @@ class _StoriesSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(height: 6),
                 Text(
-                  story['name']!,
+                  stories[i],
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 11),
@@ -226,12 +231,13 @@ class _StoriesSection extends StatelessWidget {
   }
 }
 
-/* =========================================================
-   POST CARD
-========================================================= */
+/* =========================
+   POST
+========================= */
 
-class _PostCard extends StatelessWidget {
-  const _PostCard({
+class PostCard extends StatelessWidget {
+  const PostCard({
+    super.key,
     required this.post,
   });
 
@@ -240,11 +246,11 @@ class _PostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.fromLTRB(12, 6, 12, 14),
+      margin: const EdgeInsets.fromLTRB(10, 5, 10, 12),
       color: const Color(0xFF10121A),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -255,7 +261,6 @@ class _PostCard extends StatelessWidget {
               children: [
                 const CircleAvatar(
                   radius: 22,
-                  backgroundColor: Color(0xFF202633),
                   child: Icon(Icons.person),
                 ),
                 const SizedBox(width: 10),
@@ -263,13 +268,24 @@ class _PostCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        post.author,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            post.author,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (post.verified) ...[
+                            const SizedBox(width: 5),
+                            const Icon(
+                              Icons.verified,
+                              size: 16,
+                              color: Color(0xFF00C8FF),
+                            ),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         '@${post.username}',
                         style: const TextStyle(
@@ -290,55 +306,56 @@ class _PostCard extends StatelessWidget {
                     ),
                   ),
                 PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'delete' &&
-                        post.username == data.username) {
+                  onSelected: (v) {
+                    if (v == 'delete') {
                       data.deletePost(post);
                     }
                   },
-                  itemBuilder: (_) {
-                    return [
-                      if (post.username == data.username)
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Text('حذف المنشور'),
-                        ),
+                  itemBuilder: (_) => [
+                    if (post.username == data.username)
                       const PopupMenuItem(
-                        value: 'report',
-                        child: Text('إبلاغ'),
+                        value: 'delete',
+                        child: Text('حذف المنشور'),
                       ),
-                    ];
-                  },
+                    const PopupMenuItem(
+                      value: 'report',
+                      child: Text('إبلاغ'),
+                    ),
+                  ],
                 ),
               ],
             ),
             const SizedBox(height: 14),
+            if (post.video)
+              Container(
+                height: 230,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  color: const Color(0xFF171A24),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.play_circle_fill,
+                    size: 64,
+                  ),
+                ),
+              ),
             if (post.adult)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.12),
+                  color: Colors.red.withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.lock_outline,
-                      color: Colors.redAccent,
-                    ),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'محتوى للبالغين',
-                        style: TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: const Text(
+                  '🔒 محتوى للبالغين +21',
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             Text(
@@ -348,29 +365,29 @@ class _PostCard extends StatelessWidget {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Row(
               children: [
-                _PostAction(
+                ActionButton(
                   icon: post.liked
                       ? Icons.favorite
                       : Icons.favorite_border,
-                  label: '${post.likes}',
+                  text: '${post.likes}',
                   active: post.liked,
-                  onPressed: () => data.like(post),
+                  onTap: () => data.like(post),
                 ),
-                _PostAction(
+                ActionButton(
                   icon: Icons.comment_outlined,
-                  label: '${post.comments}',
-                  onPressed: () => _showComments(context, post),
+                  text: '${post.comments}',
+                  onTap: () => comments(context, post),
                 ),
-                _PostAction(
+                ActionButton(
                   icon: post.saved
                       ? Icons.bookmark
                       : Icons.bookmark_border,
-                  label: 'حفظ',
+                  text: 'حفظ',
                   active: post.saved,
-                  onPressed: () => data.save(post),
+                  onTap: () => data.save(post),
                 ),
                 const Spacer(),
                 IconButton(
@@ -391,78 +408,72 @@ class _PostCard extends StatelessWidget {
     );
   }
 
-  void _showComments(
-    BuildContext context,
-    NPost post,
-  ) {
-    final controller = TextEditingController();
+  void comments(BuildContext context, NPost post) {
+    final c = TextEditingController();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       backgroundColor: const Color(0xFF11131A),
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            10,
-            16,
-            MediaQuery.of(sheetContext).viewInsets.bottom + 16,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'التعليقات',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          20,
+          16,
+          MediaQuery.of(ctx).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'التعليقات',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'اكتب تعليقك...',
-                  border: OutlineInputBorder(),
-                ),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: c,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: 'اكتب تعليقك...',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    if (controller.text.trim().isNotEmpty) {
-                      data.comment(post);
-                    }
-
-                    controller.dispose();
-                    Navigator.pop(sheetContext);
-                  },
-                  child: const Text('إرسال التعليق'),
-                ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  if (c.text.trim().isNotEmpty) {
+                    data.comment(post);
+                  }
+                  Navigator.pop(ctx);
+                  c.dispose();
+                },
+                child: const Text('إرسال'),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _PostAction extends StatelessWidget {
-  const _PostAction({
+class ActionButton extends StatelessWidget {
+  const ActionButton({
+    super.key,
     required this.icon,
-    required this.label,
-    required this.onPressed,
+    required this.text,
+    required this.onTap,
     this.active = false,
   });
 
   final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
+  final String text;
+  final VoidCallback onTap;
   final bool active;
 
   @override
@@ -470,63 +481,47 @@ class _PostAction extends StatelessWidget {
     return Row(
       children: [
         IconButton(
-          onPressed: onPressed,
+          onPressed: onTap,
           icon: Icon(
             icon,
             color: active ? Colors.redAccent : Colors.white,
           ),
         ),
         Text(
-          label,
+          text,
           style: const TextStyle(
             color: Colors.white70,
             fontSize: 12,
           ),
         ),
-        const SizedBox(width: 4),
       ],
     );
   }
 }
 
-/* =========================================================
+/* =========================
    EXPLORE
-========================================================= */
+========================= */
 
-class _ExplorePage extends StatefulWidget {
-  const _ExplorePage();
+class ExplorePage extends StatefulWidget {
+  const ExplorePage({super.key});
 
   @override
-  State<_ExplorePage> createState() => _ExplorePageState();
+  State<ExplorePage> createState() => _ExplorePageState();
 }
 
-class _ExplorePageState extends State<_ExplorePage> {
+class _ExplorePageState extends State<ExplorePage> {
   final controller = TextEditingController();
   String query = '';
 
   @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final results = data
-        .visiblePosts()
-        .where(
-          (post) =>
-              post.text.toLowerCase().contains(
-                    query.toLowerCase(),
-                  ) ||
-              post.author.toLowerCase().contains(
-                    query.toLowerCase(),
-                  ) ||
-              post.username.toLowerCase().contains(
-                    query.toLowerCase(),
-                  ),
-        )
-        .toList();
+    final posts = data.visiblePosts().where((p) {
+      final q = query.toLowerCase();
+      return p.text.toLowerCase().contains(q) ||
+          p.author.toLowerCase().contains(q) ||
+          p.username.toLowerCase().contains(q);
+    }).toList();
 
     return SafeArea(
       child: CustomScrollView(
@@ -535,9 +530,7 @@ class _ExplorePageState extends State<_ExplorePage> {
             backgroundColor: Color(0xFF07080D),
             title: Text(
               'استكشاف',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
           SliverToBoxAdapter(
@@ -545,25 +538,10 @@ class _ExplorePageState extends State<_ExplorePage> {
               padding: const EdgeInsets.all(16),
               child: TextField(
                 controller: controller,
-                onChanged: (value) {
-                  setState(() {
-                    query = value;
-                  });
-                },
+                onChanged: (v) => setState(() => query = v),
                 decoration: InputDecoration(
                   hintText: 'ابحث عن أشخاص أو منشورات...',
                   prefixIcon: const Icon(Icons.search),
-                  suffixIcon: query.isNotEmpty
-                      ? IconButton(
-                          onPressed: () {
-                            controller.clear();
-                            setState(() {
-                              query = '';
-                            });
-                          },
-                          icon: const Icon(Icons.clear),
-                        )
-                      : null,
                   filled: true,
                   fillColor: const Color(0xFF151720),
                   border: OutlineInputBorder(
@@ -574,97 +552,33 @@ class _ExplorePageState extends State<_ExplorePage> {
               ),
             ),
           ),
-          if (results.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Text(
-                  'لا توجد نتائج',
-                  style: TextStyle(
-                    color: Colors.white60,
-                    fontSize: 17,
-                  ),
-                ),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  return _PostCard(post: results[index]);
-                },
-                childCount: results.length,
-              ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => PostCard(post: posts[i]),
+              childCount: posts.length,
             ),
+          ),
         ],
       ),
     );
   }
 }
 
-/* =========================================================
+/* =========================
    CREATE
-========================================================= */
+========================= */
 
-class _CreatePage extends StatefulWidget {
-  const _CreatePage();
+class CreatePage extends StatefulWidget {
+  const CreatePage({super.key});
 
   @override
-  State<_CreatePage> createState() => _CreatePageState();
+  State<CreatePage> createState() => _CreatePageState();
 }
 
-class _CreatePageState extends State<_CreatePage> {
+class _CreatePageState extends State<CreatePage> {
   final controller = TextEditingController();
-
   bool adult = false;
   String visibility = 'عام';
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  void create() {
-    if (controller.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('اكتب شيئاً أولاً'),
-        ),
-      );
-      return;
-    }
-
-    if (adult && !data.adultAllowed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'لا يمكنك نشر محتوى للبالغين قبل سن 21 عاماً',
-          ),
-        ),
-      );
-      return;
-    }
-
-    data.createPost(
-      controller.text,
-      adult: adult,
-      visibility: visibility,
-    );
-
-    controller.clear();
-
-    setState(() {
-      adult = false;
-      visibility = 'عام';
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم نشر المنشور بنجاح'),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -679,364 +593,222 @@ class _CreatePageState extends State<_CreatePage> {
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 6),
-          const Text(
-            'شارك لحظتك مع مجتمع N',
-            style: TextStyle(
-              color: Colors.white54,
+          const SizedBox(height: 20),
+          TextField(
+            controller: controller,
+            minLines: 6,
+            maxLines: 10,
+            decoration: InputDecoration(
+              hintText: 'ماذا تريد أن تنشر؟',
+              filled: true,
+              fillColor: const Color(0xFF151720),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF11131A),
-              borderRadius: BorderRadius.circular(20),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('صورة'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.videocam_outlined),
+                  label: const Text('فيديو'),
+                ),
+              ),
+            ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('محتوى +21'),
+            subtitle: const Text('يظهر للمستخدمين بعمر 21 سنة فأكثر'),
+            value: adult,
+            onChanged: (v) => setState(() => adult = v),
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: visibility,
+            decoration: const InputDecoration(
+              labelText: 'الخصوصية',
+              border: OutlineInputBorder(),
             ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 24,
-                      child: Icon(Icons.person),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        data.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                TextField(
-                  controller: controller,
-                  minLines: 6,
-                  maxLines: 12,
-                  decoration: InputDecoration(
-                    hintText: 'ماذا تريد أن تنشر؟',
-                    filled: true,
-                    fillColor: const Color(0xFF191B24),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(
-                          Icons.photo_library_outlined,
-                        ),
-                        label: const Text('صورة'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(
-                          Icons.videocam_outlined,
-                        ),
-                        label: const Text('فيديو'),
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(height: 30),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('محتوى للبالغين +21'),
-                  subtitle: const Text(
-                    'سيظهر فقط للمستخدمين بعمر 21 سنة أو أكثر',
-                  ),
-                  value: adult,
-                  onChanged: (value) {
-                    setState(() {
-                      adult = value;
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: visibility,
-                  decoration: const InputDecoration(
-                    labelText: 'الخصوصية',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'عام',
-                      child: Text('عام'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'المتابعون',
-                      child: Text('المتابعون'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'خاص',
-                      child: Text('خاص'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        visibility = value;
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: create,
-                    icon: const Icon(Icons.send),
-                    label: const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: Text(
-                        'نشر الآن',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            items: const [
+              DropdownMenuItem(value: 'عام', child: Text('عام')),
+              DropdownMenuItem(
+                value: 'المتابعون',
+                child: Text('المتابعون'),
+              ),
+              DropdownMenuItem(value: 'خاص', child: Text('خاص')),
+            ],
+            onChanged: (v) {
+              if (v != null) setState(() => visibility = v);
+            },
+          ),
+          const SizedBox(height: 18),
+          FilledButton.icon(
+            onPressed: publish,
+            icon: const Icon(Icons.send),
+            label: const Padding(
+              padding: EdgeInsets.all(14),
+              child: Text(
+                'نشر الآن',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  void publish() {
+    if (controller.text.trim().isEmpty) return;
+
+    if (adult && !data.adultAllowed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('محتوى +21 غير متاح لمن هم دون 21 عاماً'),
+        ),
+      );
+      return;
+    }
+
+    data.createPost(
+      controller.text,
+      adult: adult,
+      visibility: visibility,
+    );
+
+    controller.clear();
+    setState(() {
+      adult = false;
+      visibility = 'عام';
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم نشر المنشور')),
+    );
+  }
 }
 
-/* =========================================================
+/* =========================
    MESSAGES
-========================================================= */
+========================= */
 
-class _MessagesPage extends StatelessWidget {
-  const _MessagesPage();
+class MessagesPage extends StatelessWidget {
+  const MessagesPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final conversations = data.sortedConversations();
+    final entries = data.messages.entries.toList();
 
     return SafeArea(
       child: CustomScrollView(
         slivers: [
           const SliverAppBar(
             backgroundColor: Color(0xFF07080D),
-            title: Text(
-              'الرسائل',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: Text('الرسائل'),
           ),
-          if (conversations.isEmpty)
+          if (entries.isEmpty)
             const SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Text('لا توجد محادثات'),
-              ),
+              child: Center(child: Text('لا توجد محادثات')),
             )
           else
             SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final entry = conversations[index];
-                  final username = entry.key;
-                  final messages = entry.value;
+                (_, i) {
+                  final e = entries[i];
                   final last =
-                      messages.isEmpty ? null : messages.last;
-
-                  final displayName = _displayName(username);
+                      e.value.isEmpty ? null : e.value.last;
 
                   return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 5,
-                    ),
                     leading: const CircleAvatar(
-                      radius: 27,
                       child: Icon(Icons.person),
                     ),
-                    title: Text(
-                      displayName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    title: Text(e.key),
                     subtitle: Text(
                       last?.text ?? 'ابدأ المحادثة',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: last == null
-                        ? null
-                        : Text(
-                            last.time,
-                            style: const TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                            ),
-                          ),
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => _ChatPage(
-                            username: username,
-                            name: displayName,
+                          builder: (_) => ChatPage(
+                            username: e.key,
                           ),
                         ),
                       );
                     },
                   );
                 },
-                childCount: conversations.length,
+                childCount: entries.length,
               ),
             ),
         ],
       ),
     );
   }
-
-  String _displayName(String username) {
-    switch (username) {
-      case 'ahmed':
-        return 'Ahmed';
-      case 'sara':
-        return 'Sara';
-      default:
-        return username;
-    }
-  }
 }
 
-/* =========================================================
-   CHAT
-========================================================= */
-
-class _ChatPage extends StatefulWidget {
-  const _ChatPage({
+class ChatPage extends StatefulWidget {
+  const ChatPage({
+    super.key,
     required this.username,
-    required this.name,
   });
 
   final String username;
-  final String name;
 
   @override
-  State<_ChatPage> createState() => _ChatPageState();
+  State<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<_ChatPage> {
+class _ChatPageState extends State<ChatPage> {
   final controller = TextEditingController();
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  void send() {
-    final text = controller.text.trim();
-
-    if (text.isEmpty) return;
-
-    data.sendMessage(widget.username, text);
-    controller.clear();
-  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: data,
-      builder: (context, _) {
-        final currentMessages =
-            data.messages[widget.username] ?? [];
+      builder: (_, __) {
+        final list = data.messages[widget.username] ?? [];
 
         return Scaffold(
-          backgroundColor: const Color(0xFF07080D),
           appBar: AppBar(
-            backgroundColor: const Color(0xFF07080D),
-            title: Row(
-              children: [
-                const CircleAvatar(
-                  radius: 19,
-                  child: Icon(
-                    Icons.person,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(widget.name),
-              ],
-            ),
+            title: Text(widget.username),
           ),
           body: Column(
             children: [
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: currentMessages.length,
-                  itemBuilder: (context, index) {
-                    final message = currentMessages[index];
-                    final mine =
-                        message.sender == data.username;
+                  itemCount: list.length,
+                  itemBuilder: (_, i) {
+                    final m = list[i];
+                    final mine = m.sender == data.username;
 
                     return Align(
                       alignment: mine
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth:
-                              MediaQuery.of(context).size.width *
-                                  0.78,
-                        ),
-                        margin: const EdgeInsets.only(
-                          bottom: 10,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: mine
                               ? const Color(0xFF006D8D)
                               : const Color(0xFF1A1D27),
-                          borderRadius:
-                              BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Column(
-                          crossAxisAlignment: mine
-                              ? CrossAxisAlignment.end
-                              : CrossAxisAlignment.start,
-                          children: [
-                            Text(message.text),
-                            const SizedBox(height: 4),
-                            Text(
-                              message.time,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.white54,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Text(m.text),
                       ),
                     );
                   },
@@ -1044,48 +816,31 @@ class _ChatPageState extends State<_ChatPage> {
               ),
               SafeArea(
                 top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    10,
-                    6,
-                    10,
-                    10,
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(
-                          Icons.add_circle_outline,
-                        ),
-                      ),
-                      Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
                         child: TextField(
                           controller: controller,
-                          minLines: 1,
-                          maxLines: 5,
-                          textInputAction:
-                              TextInputAction.newline,
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             hintText: 'اكتب رسالة...',
-                            filled: true,
-                            fillColor:
-                                const Color(0xFF151720),
-                            border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(22),
-                              borderSide: BorderSide.none,
-                            ),
+                            border: OutlineInputBorder(),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      FloatingActionButton.small(
-                        onPressed: send,
-                        child: const Icon(Icons.send),
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        data.sendMessage(
+                          widget.username,
+                          controller.text,
+                        );
+                        controller.clear();
+                      },
+                      icon: const Icon(Icons.send),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1096,117 +851,76 @@ class _ChatPageState extends State<_ChatPage> {
   }
 }
 
-/* =========================================================
+/* =========================
    PROFILE
-========================================================= */
+========================= */
 
-class _ProfilePage extends StatelessWidget {
-  const _ProfilePage();
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final myPosts = data.postsOf(data.username);
+    final posts = data.postsOf(data.username);
 
     return SafeArea(
       child: CustomScrollView(
         slivers: [
           SliverAppBar(
-            backgroundColor: const Color(0xFF07080D),
-            title: const Text(
-              'حسابي',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            title: const Text('حسابي'),
             actions: [
               IconButton(
-                onPressed: () {
-                  _openSettings(context);
-                },
                 icon: const Icon(Icons.settings_outlined),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsPage(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                10,
-              ),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
                   const CircleAvatar(
-                    radius: 48,
-                    backgroundColor: Color(0xFF1C2630),
-                    child: Icon(
-                      Icons.person,
-                      size: 52,
-                    ),
+                    radius: 50,
+                    child: Icon(Icons.person, size: 55),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     data.name,
                     style: const TextStyle(
-                      fontSize: 23,
+                      fontSize: 24,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 4),
                   Text(
                     '@${data.username}',
                     style: const TextStyle(
                       color: Colors.white54,
                     ),
                   ),
-                  if (data.email.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      data.email,
-                      style: const TextStyle(
-                        color: Colors.white38,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment:
                         MainAxisAlignment.spaceEvenly,
                     children: [
-                      _ProfileStat(
-                        value: '${myPosts.length}',
-                        label: 'منشورات',
+                      Stat('${posts.length}', 'منشورات'),
+                      Stat(
+                        '${data.following.length}',
+                        'متابَعون',
                       ),
-                      _ProfileStat(
-                        value: '${data.following.length}',
-                        label: 'متابَعون',
-                      ),
-                      const _ProfileStat(
-                        value: '0',
-                        label: 'متابعون',
-                      ),
+                      Stat('0', 'متابعون'),
                     ],
                   ),
                   const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'تعديل الملف الشخصي',
-                            ),
-                          ),
-                        );
-                      },
-                      child: const Text(
-                        'تعديل الملف الشخصي',
-                      ),
-                    ),
+                  OutlinedButton(
+                    onPressed: () {},
+                    child: const Text('تعديل الملف الشخصي'),
                   ),
                   const SizedBox(height: 20),
                   const Align(
@@ -1223,51 +937,20 @@ class _ProfilePage extends StatelessWidget {
               ),
             ),
           ),
-          if (myPosts.isEmpty)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(
-                  child: Text(
-                    'لم تنشر شيئاً بعد',
-                    style: TextStyle(
-                      color: Colors.white54,
-                    ),
-                  ),
-                ),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  return _PostCard(
-                    post: myPosts[index],
-                  );
-                },
-                childCount: myPosts.length,
-              ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => PostCard(post: posts[i]),
+              childCount: posts.length,
             ),
+          ),
         ],
-      ),
-    );
-  }
-
-  void _openSettings(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const _SettingsPage(),
       ),
     );
   }
 }
 
-class _ProfileStat extends StatelessWidget {
-  const _ProfileStat({
-    required this.value,
-    required this.label,
-  });
+class Stat extends StatelessWidget {
+  const Stat(this.value, this.label, {super.key});
 
   final String value;
   final String label;
@@ -1280,10 +963,9 @@ class _ProfileStat extends StatelessWidget {
           value,
           style: const TextStyle(
             fontSize: 20,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 4),
         Text(
           label,
           style: const TextStyle(
@@ -1296,42 +978,29 @@ class _ProfileStat extends StatelessWidget {
   }
 }
 
-/* =========================================================
+/* =========================
    SETTINGS
-========================================================= */
+========================= */
 
-class _SettingsPage extends StatelessWidget {
-  const _SettingsPage();
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: data,
-      builder: (context, _) {
+      builder: (_, __) {
         return Scaffold(
-          backgroundColor: const Color(0xFF07080D),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF07080D),
-            title: const Text('الإعدادات'),
-          ),
+          appBar: AppBar(title: const Text('الإعدادات')),
           body: ListView(
             children: [
-              const _SettingsHeader(
-                title: 'الحساب والخصوصية',
-              ),
               SwitchListTile(
                 title: const Text('حساب خاص'),
-                subtitle: const Text(
-                  'تحكم بمن يستطيع متابعة حسابك',
-                ),
                 value: data.privateAccount,
                 onChanged: data.setPrivateAccount,
               ),
               SwitchListTile(
                 title: const Text('حالة النشاط'),
-                subtitle: const Text(
-                  'السماح للآخرين برؤية نشاطك',
-                ),
                 value: data.activityStatus,
                 onChanged: data.setActivityStatus,
               ),
@@ -1340,78 +1009,33 @@ class _SettingsPage extends StatelessWidget {
                 value: data.allowMessages,
                 onChanged: data.setAllowMessages,
               ),
-              const _SettingsHeader(
-                title: 'الإشعارات',
-              ),
               SwitchListTile(
                 title: const Text('الإشعارات'),
                 value: data.notifications,
                 onChanged: data.setNotifications,
               ),
-              SwitchListTile(
-                title: const Text('الأصوات'),
-                value: data.sounds,
-                onChanged: data.setSounds,
-              ),
-              const _SettingsHeader(
-                title: 'الحساب',
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.military_tech),
+                title: const Text('مستوى الداعم'),
+                trailing: Text('${data.supporterLevel}'),
               ),
               ListTile(
-                leading: const Icon(Icons.person_outline),
-                title: const Text('اسم المستخدم'),
-                subtitle: Text('@${data.username}'),
+                leading: const Icon(Icons.stars),
+                title: const Text('الشارات والجوائز'),
+                subtitle: Text(
+                  data.badges.join(' • '),
+                ),
               ),
               ListTile(
-                leading: const Icon(Icons.cake_outlined),
-                title: const Text('العمر'),
-                subtitle: Text('${data.age} سنة'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('تسجيل الخروج'),
-                textColor: Colors.redAccent,
-                iconColor: Colors.redAccent,
-                onTap: () {
-                  data.logout();
-
-                  Navigator.popUntil(
-                    context,
-                    (route) => route.isFirst,
-                  );
-                },
+                leading: const Icon(Icons.monetization_on),
+                title: const Text('الرصيد'),
+                trailing: Text('${data.coins}'),
               ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _SettingsHeader extends StatelessWidget {
-  const _SettingsHeader({
-    required this.title,
-  });
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        20,
-        24,
-        20,
-        8,
-      ),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: Color(0xFF00C8FF),
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-        ),
-      ),
     );
   }
 }
