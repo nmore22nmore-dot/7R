@@ -966,8 +966,7 @@ class _ChatPageState extends State<_ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = data.messages[widget.username] ?? [];
-
+final currentMessages = data.messages[widget.username] ?? [];
     return AnimatedBuilder(
       animation: data,
       builder: (context, _) {
