@@ -1,6 +1,6 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
@@ -16,18 +16,10 @@ android {
         versionName = "2.0.0"
     }
 
-    signingConfigs {
-        release {
-            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig = signingConfigs.release
+            // استخدام توقيع debug مؤقتًا حتى ينجح بناء APK.
+            signingConfig = signingConfigs.debug
         }
     }
 
