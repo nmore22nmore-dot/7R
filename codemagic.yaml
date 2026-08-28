@@ -30,7 +30,7 @@ workflows:
 
           echo "===== FIXING ANDROID VERSIONS ====="
 
-          # AGP 8.11.1
+          # Android Gradle Plugin 8.11.1
           if [ -f android/settings.gradle ]; then
             sed -i.bak -E "s/(com\.android\.application.*version[[:space:]]*[\"']?)[0-9.]+/\18.11.1/g" android/settings.gradle
 
@@ -38,49 +38,82 @@ workflows:
             sed -i.bak -E "s/(org\.jetbrains\.kotlin\.android.*version[[:space:]]*[\"']?)[0-9.]+/\12.2.20/g" android/settings.gradle
           fi
 
-          # Older build.gradle projects
+          # Older Android projects
           if [ -f android/build.gradle ]; then
             sed -i.bak -E "s/(com\.android\.tools\.build:gradle:)[0-9.]+/\18.11.1/g" android/build.gradle
             sed -i.bak -E "s/(ext\.kotlin_version[[:space:]]*=[[:space:]]*[\"']?)[0-9.]+/\12.2.20/g" android/build.gradle
           fi
 
-          # Force compileSdk 36 safely.
-          # Replace the entire compileSdk line instead of modifying part of it.
+          # Safely force compileSdk 36
           if [ -f android/app/build.gradle ]; then
-            sed -i.bak -E '/^[[:space:]]*compileSdk([[:space:]]*=[[:space:]]*|[[:space:]]+)[0-9.]+[[:space:]]*$/c\
-            compileSdk = 36' android/app/build.gradle
+            python3 - <<'PY'
+          from pathlib import Path
+          
+          path = Path("android/app/build.gradle")
+          text = path.read_text()
+          
+          lines = text.splitlines()
+          result = []
+          
+          for line in lines:
+              stripped = line.strip()
+              
+              if stripped.startswith("compileSdk"):
+                  indent = line[:len(line) - len(line.lstrip())]
+                  result.append(indent + "compileSdk = 36")
+              else:
+                  result.append(line)
+          
+          path.write_text("\n".join(result) + "\n")
+          PY
           fi
 
-          # Also repair any malformed compileSdk line left by a previous build.
-          if [ -f android/app/build.gradle ]; then
-            sed -i.bak -E 's/^[[:space:]]*compileSdk.*$/            compileSdk = 36/' android/app/build.gradle
+          if [ -f android/app/build.gradle.kts ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          
+          path = Path("android/app/build.gradle.kts")
+          text = path.read_text()
+          
+          lines = text.splitlines()
+          result = []
+          
+          for line in lines:
+              stripped = line.strip()
+              
+              if stripped.startswith("compileSdk"):
+                  indent = line[:len(line) - len(line.lstrip())]
+                  result.append(indent + "compileSdk = 36")
+              else:
+                  result.append(line)
+          
+          path.write_text("\n".join(result) + "\n")
+          PY
           fi
 
-          echo "===== FINAL compileSdk ====="
-          grep -n "compileSdk" android/app/build.gradle || true
+          echo "===== ANDROID VERSIONS ====="
 
-          echo "===== FINAL AGP/KOTLIN ====="
-          grep -n "com.android.application\|org.jetbrains.kotlin.android" android/settings.gradle || true
+          grep -R "com.android.application" android --include="settings.gradle" --include="build.gradle" 2>/dev/null || true
+          grep -R "org.jetbrains.kotlin.android" android --include="settings.gradle" --include="build.gradle" 2>/dev/null || true
+          grep -R "compileSdk" android/app 2>/dev/null || true
 
       - name: Verify Android configuration
         script: |
           set -e
 
-          echo "===== CHECKING compileSdk ====="
+          echo "===== VERIFYING ANDROID CONFIGURATION ====="
 
-          if grep -q "compileSdk = 36" android/app/build.gradle; then
-            echo "compileSdk 36 OK"
-          else
+          if ! grep -q "compileSdk = 36" android/app/build.gradle 2>/dev/null; then
             echo "ERROR: compileSdk 36 was not configured"
             exit 1
           fi
 
-          if grep -q "compileSdk 36=" android/app/build.gradle; then
+          if grep -q "compileSdk 36=" android/app/build.gradle 2>/dev/null; then
             echo "ERROR: malformed compileSdk detected"
             exit 1
           fi
 
-          if grep -q "compileSdk.*=.*=" android/app/build.gradle; then
+          if grep -q "compileSdk.*=.*=" android/app/build.gradle 2>/dev/null; then
             echo "ERROR: malformed compileSdk assignment detected"
             exit 1
           fi
@@ -99,6 +132,123 @@ workflows:
           set -e
 
           flutter analyze
+
+      - name: Create Android launcher icon
+        script: |
+          set -e
+
+          echo "===== CREATING ANDROID LAUNCHER ICON ====="
+
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+
+          python3 - <<'PY'
+          import struct
+          import zlib
+          import os
+
+          def create_png(path, size):
+              width = size
+              height = size
+
+              raw = b''
+
+              for y in range(height):
+                  raw += b'\x00'
+
+                  for x in range(width):
+                      # Simple dark N application icon
+                      border = size // 8
+
+                      if (
+                          border <= x < size - border
+                          and border <= y < size - border
+                      ):
+                          r, g, b, a = 20, 20, 20, 255
+                      else:
+                          r, g, b, a = 0, 0, 0, 255
+
+                      raw += bytes((r, g, b, a))
+
+              def chunk(chunk_type, data):
+                  return (
+                      struct.pack(">I", len(data))
+                      + chunk_type
+                      + data
+                      + struct.pack(
+                          ">I",
+                          zlib.crc32(chunk_type + data) & 0xffffffff
+                      )
+                  )
+
+              png_data = b'\x89PNG\r\n\x1a\n'
+
+              png_data += chunk(
+                  b'IHDR',
+                  struct.pack(
+                      ">IIBBBBB",
+                      width,
+                      height,
+                      8,
+                      6,
+                      0,
+                      0,
+                      0
+                  )
+              )
+
+              png_data += chunk(
+                  b'IDAT',
+                  zlib.compress(raw, 9)
+              )
+
+              png_data += chunk(
+                  b'IEND',
+                  b''
+              )
+
+              with open(path, "wb") as file:
+                  file.write(png_data)
+
+          icons = {
+              "mdpi": 48,
+              "hdpi": 72,
+              "xhdpi": 96,
+              "xxhdpi": 144,
+              "xxxhdpi": 192,
+          }
+
+          for density, size in icons.items():
+              directory = f"android/app/src/main/res/mipmap-{density}"
+
+              os.makedirs(
+                  directory,
+                  exist_ok=True
+              )
+
+              create_png(
+                  f"{directory}/ic_launcher.png",
+                  size
+              )
+
+              create_png(
+                  f"{directory}/ic_launcher_round.png",
+                  size
+              )
+
+          print("ANDROID LAUNCHER ICONS CREATED")
+          PY
+
+          test -f android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          echo "===== LAUNCHER ICONS OK ====="
 
       - name: Build APK
         script: |
