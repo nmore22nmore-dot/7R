@@ -1,0 +1,64 @@
+name: N Android Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build N APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify project
+        run: |
+          set -e
+          test -f pubspec.yaml
+          test -d lib
+          test -d android
+          test -f android/settings.gradle
+          test -f android/app/build.gradle
+          echo "PROJECT STRUCTURE OK"
+
+      - name: Get dependencies
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Analyze Dart
+        run: |
+          flutter analyze
+
+      - name: Build release APK
+        run: |
+          flutter build apk --release
+
+      - name: Verify APK
+        run: |
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: N-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
