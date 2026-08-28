@@ -47,24 +47,56 @@ jobs:
       - name: Get dependencies
         run: |
           set -e
+
           flutter clean
           flutter pub get
 
-      - name: Flutter version
+      - name: Verify Flutter
         run: |
+          set -e
+
           flutter --version
           dart --version
+          flutter doctor -v
 
       - name: Analyze Dart
         run: |
+          set -e
+
           flutter analyze
 
       - name: Build release APK
+        id: build_apk
         run: |
-          set -e
-          flutter build apk --release --verbose
+          set -o pipefail
+
+          flutter build apk --release --verbose 2>&1 | tee build.log
+
+      - name: Show build error
+        if: failure()
+        run: |
+          echo "======================================"
+          echo "N BUILD ERROR DIAGNOSTICS"
+          echo "======================================"
+
+          if [ -f build.log ]; then
+            echo "===== IMPORTANT ERRORS ====="
+
+            grep -n -E \
+              "FAILURE:|What went wrong:|Execution failed|Could not|error:|ERROR|Exception" \
+              build.log | tail -100 || true
+
+            echo "======================================"
+            echo "===== LAST 150 LOG LINES ====="
+            echo "======================================"
+
+            tail -150 build.log
+          else
+            echo "build.log was not created."
+          fi
 
       - name: Verify APK
+        if: success()
         run: |
           set -e
 
@@ -75,10 +107,14 @@ jobs:
             exit 1
           fi
 
-          echo "===== N APK CREATED SUCCESSFULLY ====="
+          echo "======================================"
+          echo "N APK CREATED SUCCESSFULLY"
+          echo "======================================"
+
           ls -lh "$APK"
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: N-release-apk
