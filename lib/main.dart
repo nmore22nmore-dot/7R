@@ -51,7 +51,7 @@ class NApp extends StatelessWidget {
 }
 
 /* =========================================================
-   DATA MODELS
+   MODELS
 ========================================================= */
 
 class NPost {
@@ -169,9 +169,6 @@ class NData extends ChangeNotifier {
 
   bool get adultAllowed => age >= 21;
 
-  int get myPosts =>
-      posts.where((post) => post.username == username).length;
-
   void login({
     required String newName,
     required String newUsername,
@@ -226,33 +223,29 @@ class NData extends ChangeNotifier {
     notifyListeners();
   }
 
-  void follow(String user) {
-    if (following.contains(user)) {
-      following.remove(user);
+  void follow(String username) {
+    if (following.contains(username)) {
+      following.remove(username);
     } else {
-      following.add(user);
+      following.add(username);
     }
 
     notifyListeners();
   }
 
-  List<NPost> postsOf(String user) {
-    return posts.where((post) => post.username == user).toList();
+  List<NPost> postsOf(String username) {
+    return posts.where((p) => p.username == username).toList();
   }
 
   List<NPost> visiblePosts() {
     return posts.where((post) {
-      if (!post.adult) {
-        return true;
-      }
-
+      if (!post.adult) return true;
       return adultAllowed;
     }).toList();
   }
 
   void sendMessage(String user, String text) {
     final list = messages.putIfAbsent(user, () => []);
-
     final now = DateTime.now();
 
     final hour = now.hour.toString().padLeft(2, '0');
@@ -310,16 +303,9 @@ class _LoginPageState extends State<LoginPage> {
 
   int ageFromBirth(DateTime date) {
     final now = DateTime.now();
-
     int age = now.year - date.year;
 
-    final birthday = DateTime(
-      now.year,
-      date.month,
-      date.day,
-    );
-
-    if (birthday.isAfter(now)) {
+    if (DateTime(now.year, date.month, date.day).isAfter(now)) {
       age--;
     }
 
@@ -366,9 +352,7 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     if (!RegExp(r'^[a-zA-Z0-9_.]+$').hasMatch(u)) {
-      showMessage(
-        'استخدم الأحرف الإنجليزية والأرقام و _ و . فقط',
-      );
+      showMessage('استخدم الأحرف الإنجليزية والأرقام و _ و . فقط');
       return;
     }
 
@@ -395,9 +379,7 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     data.login(
-      newName: register
-          ? nameController.text.trim()
-          : 'N User',
+      newName: register ? nameController.text.trim() : 'N User',
       newUsername: u,
       newEmail: emailController.text.trim(),
       newAge: age,
@@ -419,9 +401,7 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 460,
-              ),
+              constraints: const BoxConstraints(maxWidth: 460),
               child: Column(
                 children: [
                   Container(
@@ -459,9 +439,7 @@ class _LoginPageState extends State<LoginPage> {
                     register
                         ? 'شبكة اجتماعية جديدة تجمعك بالعالم'
                         : 'سجل الدخول إلى حسابك',
-                    style: const TextStyle(
-                      color: Colors.white60,
-                    ),
+                    style: const TextStyle(color: Colors.white60),
                   ),
                   const SizedBox(height: 30),
                   if (register)
@@ -469,9 +447,7 @@ class _LoginPageState extends State<LoginPage> {
                       controller: nameController,
                       decoration: const InputDecoration(
                         labelText: 'الاسم',
-                        prefixIcon: Icon(
-                          Icons.person_outline,
-                        ),
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
                     ),
                   if (register) const SizedBox(height: 12),
@@ -480,9 +456,7 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: const InputDecoration(
                       labelText: 'اسم المستخدم',
                       hintText: '@username',
-                      prefixIcon: Icon(
-                        Icons.alternate_email,
-                      ),
+                      prefixIcon: Icon(Icons.alternate_email),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -491,9 +465,7 @@ class _LoginPageState extends State<LoginPage> {
                     keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       labelText: 'البريد الإلكتروني',
-                      prefixIcon: Icon(
-                        Icons.email_outlined,
-                      ),
+                      prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -502,9 +474,7 @@ class _LoginPageState extends State<LoginPage> {
                     obscureText: hidden,
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                      ),
+                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -523,9 +493,7 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: chooseBirthDate,
-                      icon: const Icon(
-                        Icons.calendar_month,
-                      ),
+                      icon: const Icon(Icons.calendar_month),
                       label: Text(
                         birthDate == null
                             ? 'تاريخ الميلاد'
@@ -541,9 +509,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: Padding(
                         padding: const EdgeInsets.all(15),
                         child: Text(
-                          register
-                              ? 'إنشاء الحساب'
-                              : 'تسجيل الدخول',
+                          register ? 'إنشاء الحساب' : 'تسجيل الدخول',
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
@@ -625,28 +591,22 @@ class _NHomeState extends State<NHome> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          const NotificationsPage(),
+                      builder: (_) => const NotificationsPage(),
                     ),
                   );
                 },
-                icon: const Icon(
-                  Icons.notifications_none,
-                ),
+                icon: const Icon(Icons.notifications_none),
               ),
               IconButton(
                 onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          const MessagesPage(),
+                      builder: (_) => const MessagesPage(),
                     ),
                   );
                 },
-                icon: const Icon(
-                  Icons.chat_bubble_outline,
-                ),
+                icon: const Icon(Icons.chat_bubble_outline),
               ),
             ],
           ),
@@ -720,14 +680,9 @@ class HomePage extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              const Story(
-                label: 'قصتك',
-                own: true,
-              ),
+              const Story(label: 'قصتك', own: true),
               ...data.stories.map(
-                (story) => Story(
-                  label: story.name,
-                ),
+                (story) => Story(label: story.name),
               ),
             ],
           ),
@@ -813,9 +768,7 @@ class HomePage extends StatelessWidget {
 
             return Column(
               children: posts
-                  .map(
-                    (post) => PostCard(post: post),
-                  )
+                  .map((post) => PostCard(post: post))
                   .toList(),
             );
           },
@@ -846,17 +799,13 @@ class Story extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => StoryViewerPage(
-              title: label,
-            ),
+            builder: (_) => StoryViewerPage(title: label),
           ),
         );
       },
       child: Container(
         width: 84,
-        margin: const EdgeInsetsDirectional.only(
-          end: 12,
-        ),
+        margin: const EdgeInsetsDirectional.only(end: 12),
         child: Column(
           children: [
             Container(
@@ -873,9 +822,7 @@ class Story extends StatelessWidget {
               child: CircleAvatar(
                 radius: 31,
                 child: Icon(
-                  own
-                      ? Icons.add
-                      : Icons.person,
+                  own ? Icons.add : Icons.person,
                 ),
               ),
             ),
@@ -947,7 +894,7 @@ class StoryViewerPage extends StatelessWidget {
 }
 
 /* =========================================================
-   POST CARD
+   POST
 ========================================================= */
 
 class PostCard extends StatelessWidget {
@@ -976,8 +923,7 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
@@ -1011,12 +957,8 @@ class PostCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  onPressed: () {
-                    _postMenu(context);
-                  },
-                  icon: const Icon(
-                    Icons.more_horiz,
-                  ),
+                  onPressed: () => _postMenu(context),
+                  icon: const Icon(Icons.more_horiz),
                 ),
               ],
             ),
@@ -1033,8 +975,7 @@ class PostCard extends StatelessWidget {
               height: 190,
               width: double.infinity,
               decoration: BoxDecoration(
-                borderRadius:
-                    BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(18),
                 gradient: const LinearGradient(
                   colors: [
                     Color(0xFF171B28),
@@ -1058,34 +999,24 @@ class PostCard extends StatelessWidget {
                     post.liked
                         ? Icons.favorite
                         : Icons.favorite_border,
-                    color:
-                        post.liked ? Colors.red : null,
+                    color: post.liked ? Colors.red : null,
                   ),
                 ),
                 Text('${post.likes}'),
                 IconButton(
-                  onPressed: () {
-                    _comments(context);
-                  },
-                  icon: const Icon(
-                    Icons.mode_comment_outlined,
-                  ),
+                  onPressed: () => _comments(context),
+                  icon: const Icon(Icons.mode_comment_outlined),
                 ),
                 Text('${post.comments}'),
                 IconButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text(
-                          'تم تجهيز المشاركة',
-                        ),
+                        content: Text('تم تجهيز المشاركة'),
                       ),
                     );
                   },
-                  icon: const Icon(
-                    Icons.share_outlined,
-                  ),
+                  icon: const Icon(Icons.share_outlined),
                 ),
                 const Spacer(),
                 IconButton(
@@ -1116,11 +1047,8 @@ class PostCard extends StatelessWidget {
           padding: EdgeInsets.only(
             left: 16,
             right: 16,
-            bottom: MediaQuery.of(context)
-                    .viewInsets
-                    .bottom +
-                16,
             top: 15,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1268,44 +1196,37 @@ class _ExplorePageState extends State<ExplorePage> {
           ),
         ),
         const SizedBox(height: 8),
-        ...filtered.map(
-          (user) {
-            final followed =
-                data.following.contains(user[1]);
+        ...filtered.map((user) {
+          final followed = data.following.contains(user[1]);
 
-            return Card(
-              margin: const EdgeInsets.only(
-                bottom: 9,
+          return Card(
+            margin: const EdgeInsets.only(bottom: 9),
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.person),
               ),
-              child: ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.person),
-                ),
-                title: Text(user[0]),
-                subtitle: Text('@${user[1]}'),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => UserProfilePage(
-                        name: user[0],
-                        username: user[1],
-                      ),
+              title: Text(user[0]),
+              subtitle: Text('@${user[1]}'),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UserProfilePage(
+                      name: user[0],
+                      username: user[1],
                     ),
-                  );
-                },
-                trailing: FilledButton(
-                  onPressed: () {
-                    data.follow(user[1]);
-                  },
-                  child: Text(
-                    followed ? 'متابَع' : 'متابعة',
                   ),
+                );
+              },
+              trailing: FilledButton(
+                onPressed: () => data.follow(user[1]),
+                child: Text(
+                  followed ? 'متابَع' : 'متابعة',
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        }),
         const SizedBox(height: 22),
         const Text(
           'الرائج الآن',
@@ -1324,18 +1245,124 @@ class _ExplorePageState extends State<ExplorePage> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            title: Text(
-              '#موضوع_رائج_${i + 1}',
-            ),
-            subtitle: Text(
-              '${2500 + i * 731} منشور',
-            ),
-            trailing: const Icon(
-              Icons.trending_up,
-            ),
+            title: Text('#موضوع_رائج_${i + 1}'),
+            subtitle: Text('${2500 + i * 731} منشور'),
+            trailing: const Icon(Icons.trending_up),
           ),
         ),
       ],
+    );
+  }
+}
+
+/* =========================================================
+   USER PROFILE
+========================================================= */
+
+class UserProfilePage extends StatelessWidget {
+  const UserProfilePage({
+    super.key,
+    required this.name,
+    required this.username,
+  });
+
+  final String name;
+  final String username;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(name),
+      ),
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (_, __) {
+          final posts = data.postsOf(username);
+          final followed = data.following.contains(username);
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const SizedBox(height: 10),
+              const Center(
+                child: CircleAvatar(
+                  radius: 55,
+                  child: Icon(
+                    Icons.person,
+                    size: 52,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 25,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Center(
+                child: Text(
+                  '@$username',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: () => data.follow(username),
+                child: Text(
+                  followed ? 'إلغاء المتابعة' : 'متابعة',
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.spaceEvenly,
+                children: [
+                  ProfileStat(
+                    number: '${posts.length}',
+                    label: 'المنشورات',
+                  ),
+                  const ProfileStat(
+                    number: '0',
+                    label: 'المتابعون',
+                  ),
+                  const ProfileStat(
+                    number: '0',
+                    label: 'المتابَعون',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 25),
+              const Text(
+                'المنشورات',
+                style: TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (posts.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(22),
+                    child: Center(
+                      child: Text('لا توجد منشورات'),
+                    ),
+                  ),
+                ),
+              ...posts.map(
+                (post) => PostCard(post: post),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -1411,8 +1438,7 @@ class _CreatePageState extends State<CreatePage> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
             'إنشاء منشور',
@@ -1443,13 +1469,11 @@ class _CreatePageState extends State<CreatePage> {
               controller: controller,
               maxLines: null,
               expands: true,
-              textAlignVertical:
-                  TextAlignVertical.top,
+              textAlignVertical: TextAlignVertical.top,
               maxLength: 2000,
               decoration: const InputDecoration(
                 hintText: 'ماذا تريد أن تشارك؟',
-                contentPadding:
-                    EdgeInsets.all(17),
+                contentPadding: EdgeInsets.all(17),
               ),
             ),
           ),
@@ -1459,8 +1483,7 @@ class _CreatePageState extends State<CreatePage> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
                           'اختيار الصورة جاهز للربط مع التخزين',
@@ -1468,9 +1491,7 @@ class _CreatePageState extends State<CreatePage> {
                       ),
                     );
                   },
-                  icon: const Icon(
-                    Icons.image_outlined,
-                  ),
+                  icon: const Icon(Icons.image_outlined),
                   label: const Text('صورة'),
                 ),
               ),
@@ -1478,8 +1499,7 @@ class _CreatePageState extends State<CreatePage> {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
                           'اختيار الفيديو جاهز للربط مع التخزين',
@@ -1487,9 +1507,7 @@ class _CreatePageState extends State<CreatePage> {
                       ),
                     );
                   },
-                  icon: const Icon(
-                    Icons.videocam_outlined,
-                  ),
+                  icon: const Icon(Icons.videocam_outlined),
                   label: const Text('فيديو'),
                 ),
               ),
@@ -1504,8 +1522,7 @@ class _CreatePageState extends State<CreatePage> {
             value: adult,
             onChanged: (value) {
               if (value && !data.adultAllowed) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
                       'هذا الخيار متاح للحسابات بعمر 21 سنة فأكثر',
@@ -1621,15 +1638,15 @@ class LivePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
-              children: [
-                const Text(
+              children: const [
+                Text(
                   'N Official',
                   style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Text(
+                Text(
                   'مرحباً بالجميع في البث المباشر',
                 ),
               ],
@@ -1650,12 +1667,9 @@ class LivePage extends StatelessWidget {
                 ),
                 IconButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text(
-                          'تم إرسال هدية 🎁',
-                        ),
+                        content: Text('تم إرسال هدية 🎁'),
                       ),
                     );
                   },
@@ -1706,26 +1720,21 @@ class MessagesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: users.map((user) {
-          final messages =
-              data.messages[user[1]] ?? [];
+          final messages = data.messages[user[1]] ?? [];
 
           final last = messages.isNotEmpty
               ? messages.last.text
               : 'ابدأ المحادثة';
 
           return Card(
-            margin: const EdgeInsets.only(
-              bottom: 10,
-            ),
+            margin: const EdgeInsets.only(bottom: 10),
             child: ListTile(
               leading: const CircleAvatar(
                 child: Icon(Icons.person),
               ),
               title: Text(user[0]),
               subtitle: Text(last),
-              trailing: const Icon(
-                Icons.chevron_left,
-              ),
+              trailing: const Icon(Icons.chevron_left),
               onTap: () {
                 Navigator.push(
                   context,
@@ -1775,9 +1784,7 @@ class _ChatPageState extends State<ChatPage> {
   void send() {
     final text = controller.text.trim();
 
-    if (text.isEmpty) {
-      return;
-    }
+    if (text.isEmpty) return;
 
     data.sendMessage(
       widget.username,
@@ -1809,14 +1816,11 @@ class _ChatPageState extends State<ChatPage> {
               animation: data,
               builder: (_, __) {
                 final current =
-                    data.messages[widget.username] ??
-                        [];
+                    data.messages[widget.username] ?? [];
 
                 if (current.isEmpty) {
                   return const Center(
-                    child: Text(
-                      'ابدأ المحادثة الآن',
-                    ),
+                    child: Text('ابدأ المحادثة الآن'),
                   );
                 }
 
@@ -1827,31 +1831,24 @@ class _ChatPageState extends State<ChatPage> {
                     final message = current[i];
 
                     final mine =
-                        message.sender ==
-                            data.username;
+                        message.sender == data.username;
 
                     return Align(
                       alignment: mine
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        margin:
-                            const EdgeInsets.only(
+                        margin: const EdgeInsets.only(
                           bottom: 8,
                         ),
-                        padding:
-                            const EdgeInsets.symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: mine
-                              ? const Color(
-                                  0xFF006D91,
-                                )
-                              : const Color(
-                                  0xFF1B1E27,
-                                ),
+                              ? const Color(0xFF006D91)
+                              : const Color(0xFF1B1E27),
                           borderRadius:
                               BorderRadius.circular(18),
                         ),
@@ -1885,11 +1882,9 @@ class _ChatPageState extends State<ChatPage> {
                   Expanded(
                     child: TextField(
                       controller: controller,
-                      textInputAction:
-                          TextInputAction.send,
+                      textInputAction: TextInputAction.send,
                       onSubmitted: (_) => send(),
-                      decoration:
-                          const InputDecoration(
+                      decoration: const InputDecoration(
                         hintText: 'اكتب رسالة...',
                       ),
                     ),
@@ -1928,32 +1923,27 @@ class NotificationsPage extends StatelessWidget {
           NotificationItem(
             icon: Icons.favorite,
             title: 'الإعجابات',
-            subtitle:
-                'لديك تفاعلات جديدة على منشوراتك',
+            subtitle: 'لديك تفاعلات جديدة على منشوراتك',
           ),
           NotificationItem(
             icon: Icons.person_add,
             title: 'متابعون جدد',
-            subtitle:
-                'هناك أشخاص جدد يتابعونك',
+            subtitle: 'هناك أشخاص جدد يتابعونك',
           ),
           NotificationItem(
             icon: Icons.mode_comment,
             title: 'التعليقات',
-            subtitle:
-                'لديك تعليقات جديدة',
+            subtitle: 'لديك تعليقات جديدة',
           ),
           NotificationItem(
             icon: Icons.live_tv,
             title: 'البث المباشر',
-            subtitle:
-                'بدأ بث مباشر جديد',
+            subtitle: 'بدأ بث مباشر جديد',
           ),
           NotificationItem(
             icon: Icons.message,
             title: 'رسالة جديدة',
-            subtitle:
-                'لديك رسالة جديدة',
+            subtitle: 'لديك رسالة جديدة',
           ),
         ],
       ),
@@ -1988,9 +1978,7 @@ class NotificationItem extends StatelessWidget {
           ),
         ),
         subtitle: Text(subtitle),
-        trailing: const Icon(
-          Icons.chevron_left,
-        ),
+        trailing: const Icon(Icons.chevron_left),
       ),
     );
   }
@@ -2008,8 +1996,7 @@ class ProfilePage extends StatelessWidget {
     return AnimatedBuilder(
       animation: data,
       builder: (_, __) {
-        final myPosts =
-            data.postsOf(data.username);
+        final myPosts = data.postsOf(data.username);
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -2056,8 +2043,7 @@ class ProfilePage extends StatelessWidget {
                   label: 'المتابعون',
                 ),
                 ProfileStat(
-                  number:
-                      '${data.following.length}',
+                  number: '${data.following.length}',
                   label: 'المتابَعون',
                 ),
               ],
@@ -2067,16 +2053,13 @@ class ProfilePage extends StatelessWidget {
               child: Column(
                 children: [
                   ListTile(
-                    leading: const Icon(
-                      Icons.person_outline,
-                    ),
+                    leading: const Icon(Icons.person_outline),
                     title: const Text('الحساب'),
                     subtitle: Text(
                       'العمر المسجل: ${data.age} سنة',
                     ),
-                    trailing: const Icon(
-                      Icons.chevron_left,
-                    ),
+                    trailing:
+                        const Icon(Icons.chevron_left),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -2089,15 +2072,12 @@ class ProfilePage extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(
-                      Icons.security,
-                    ),
+                    leading: const Icon(Icons.security),
                     title: const Text(
                       'الأمان والخصوصية',
                     ),
-                    trailing: const Icon(
-                      Icons.chevron_left,
-                    ),
+                    trailing:
+                        const Icon(Icons.chevron_left),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -2110,25 +2090,19 @@ class ProfilePage extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   const ListTile(
-                    leading: Icon(
-                      Icons.shield_outlined,
-                    ),
-                    title: Text(
-                      'الحماية العمرية',
-                    ),
+                    leading: Icon(Icons.shield_outlined),
+                    title: Text('الحماية العمرية'),
                     subtitle: Text(
                       'محتوى +21 محمي بحسب عمر الحساب',
                     ),
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(
-                      Icons.settings_outlined,
-                    ),
+                    leading:
+                        const Icon(Icons.settings_outlined),
                     title: const Text('الإعدادات'),
-                    trailing: const Icon(
-                      Icons.chevron_left,
-                    ),
+                    trailing:
+                        const Icon(Icons.chevron_left),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -2143,8 +2117,6 @@ class ProfilePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-
-            // منشورات صاحب الحساب تظهر داخل ملفه الشخصي
             const Text(
               'منشوراتي',
               style: TextStyle(
@@ -2175,12 +2147,239 @@ class ProfilePage extends StatelessWidget {
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const LoginPage(),
+                    builder: (_) => const LoginPage(),
                   ),
                   (_) => false,
                 );
               },
               icon: const Icon(Icons.logout),
-              label: const Text(
-                'تسجيل الخروج
+              label: const Text('تسجيل الخروج'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/* =========================================================
+   PROFILE STAT
+========================================================= */
+
+class ProfileStat extends StatelessWidget {
+  const ProfileStat({
+    super.key,
+    required this.number,
+    required this.label,
+  });
+
+  final String number;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          number,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white54,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/* =========================================================
+   ACCOUNT SETTINGS
+========================================================= */
+
+class AccountSettingsPage extends StatelessWidget {
+  const AccountSettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الحساب'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const ListTile(
+            leading: Icon(Icons.person),
+            title: Text('الاسم'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.badge_outlined),
+            title: const Text('اسم المستخدم'),
+            subtitle: Text('@${data.username}'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.email_outlined),
+            title: const Text('البريد الإلكتروني'),
+            subtitle: Text(
+              data.email.isEmpty
+                  ? 'غير محدد'
+                  : data.email,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cake_outlined),
+            title: const Text('العمر'),
+            subtitle: Text('${data.age} سنة'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* =========================================================
+   PRIVACY
+========================================================= */
+
+class PrivacyPage extends StatefulWidget {
+  const PrivacyPage({super.key});
+
+  @override
+  State<PrivacyPage> createState() => _PrivacyPageState();
+}
+
+class _PrivacyPageState extends State<PrivacyPage> {
+  bool privateAccount = false;
+  bool activity = true;
+  bool messages = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الأمان والخصوصية'),
+      ),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            title: const Text('حساب خاص'),
+            subtitle: const Text(
+              'السماح للمتابعين المعتمدين فقط برؤية المحتوى',
+            ),
+            value: privateAccount,
+            onChanged: (value) {
+              setState(() {
+                privateAccount = value;
+              });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('حالة النشاط'),
+            subtitle: const Text(
+              'إظهار حالة نشاطك للآخرين',
+            ),
+            value: activity,
+            onChanged: (value) {
+              setState(() {
+                activity = value;
+              });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('الرسائل'),
+            subtitle: const Text(
+              'السماح باستقبال الرسائل',
+            ),
+            value: messages,
+            onChanged: (value) {
+              setState(() {
+                messages = value;
+              });
+            },
+          ),
+          const ListTile(
+            leading: Icon(Icons.shield),
+            title: Text('الحماية +21'),
+            subtitle: Text(
+              'المحتوى المصنف +21 لا يظهر للحسابات الأقل من 21 سنة.',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* =========================================================
+   SETTINGS
+========================================================= */
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool notifications = true;
+  bool sounds = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الإعدادات'),
+      ),
+      body: ListView(
+        children: [
+          SwitchListTile(
+            title: const Text('الإشعارات'),
+            value: notifications,
+            onChanged: (value) {
+              setState(() {
+                notifications = value;
+              });
+            },
+          ),
+          SwitchListTile(
+            title: const Text('أصوات التطبيق'),
+            value: sounds,
+            onChanged: (value) {
+              setState(() {
+                sounds = value;
+              });
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: const Text('اللغة'),
+            subtitle: const Text('العربية'),
+            onTap: () {},
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('حول N'),
+            subtitle: const Text('N Social Platform'),
+            onTap: () {
+              showAboutDialog(
+                context: context,
+                applicationName: 'N',
+                applicationVersion: '1.0.0',
+                applicationLegalese:
+                    'N Social Platform',
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
