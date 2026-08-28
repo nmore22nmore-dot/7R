@@ -1,25 +1,55 @@
-# N — Build Ready
+# N — Arabic Social Platform
 
-This edition is intentionally dependency-light: Flutter SDK + Material only. It avoids the experimental Dart dot-shorthand syntax that caused the previous Codemagic failure.
+تطبيق N هو مشروع منصة اجتماعية عربية بواجهة RTL وتصميم داكن حديث.
 
-## Included
-- Arabic RTL UI
-- Sign up / sign in demo flow
-- Username validation (4+)
-- Birth date and age calculation
-- +21 content gate in the local app
-- Feed, stories, likes, comments, saves, share UI
-- Explore/search, follow UI, trending topics
-- Create posts with visibility and +21 flag
-- Notifications UI
-- Profile and logout
-- Android project
-- Codemagic workflow with `flutter analyze` before APK build
+## الحالة الحالية
 
-## Important
-This build is a standalone/offline functional prototype. It does not contain a real server account system, cloud database, real-time messaging, media upload service, payments, or production moderation backend. Those require backend credentials/services and cannot honestly be claimed as included without them.
+هذه النسخة هي نسخة Flutter قابلة للبناء وتحتوي على واجهة وتجربة محلية للتطبيق.
 
-## Build
-`flutter pub get`
-`flutter analyze`
-`flutter build apk --release`
+### الموجود حاليًا
+
+- واجهة عربية RTL.
+- شاشة ترحيب.
+- الصفحة الرئيسية بنمط الفيديو العمودي.
+- المنشورات.
+- الإعجاب.
+- التعليقات.
+- الحفظ.
+- المشاركة.
+- حذف منشورات المستخدم.
+- نظام متابعة محلي.
+- فلترة محتوى +21 محليًا.
+- مستويات ظهور المنشور:
+  - عام
+  - المتابعون
+  - خاص
+- واجهة الاستكشاف.
+- واجهة إنشاء المنشورات.
+- واجهة الرسائل.
+- واجهة الحساب الشخصي.
+- إعدادات الحساب المحلية.
+- مشروع Android.
+- إعداد Codemagic لبناء APK.
+
+## ملاحظة
+
+الميزات التالية ليست مرتبطة بخادم حقيقي في هذه النسخة:
+
+- الحسابات السحابية.
+- قاعدة البيانات السحابية.
+- المراسلة الفورية.
+- رفع الصور والفيديوهات.
+- البث المباشر الحقيقي.
+- المدفوعات والعملات والهدايا.
+- نظام الإشراف والإدارة على الخادم.
+
+يمكن ربط هذه الخدمات لاحقًا باستخدام Backend مناسب مثل Supabase.
+
+## البناء
+
+نفّذ:
+
+```bash
+flutter pub get
+flutter analyze
+flutter build apk --release
