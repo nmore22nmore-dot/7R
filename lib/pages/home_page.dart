@@ -21,12 +21,12 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: const Color(0xFF07080D),
           body: IndexedStack(
             index: selectedIndex,
-            children: [
-              const _HomeFeedPage(),
-              const _ExplorePage(),
-              const _CreatePage(),
-              const _MessagesPage(),
-              const _ProfilePage(),
+            children: const [
+              _HomeFeedPage(),
+              _ExplorePage(),
+              _CreatePage(),
+              _MessagesPage(),
+              _ProfilePage(),
             ],
           ),
           bottomNavigationBar: NavigationBar(
@@ -109,11 +109,9 @@ class _HomeFeedPage extends StatelessWidget {
               ),
             ],
           ),
-
           SliverToBoxAdapter(
             child: _StoriesSection(),
           ),
-
           if (posts.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
@@ -314,9 +312,7 @@ class _PostCard extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 14),
-
             if (post.adult)
               Container(
                 width: double.infinity,
@@ -345,7 +341,6 @@ class _PostCard extends StatelessWidget {
                   ],
                 ),
               ),
-
             Text(
               post.text,
               style: const TextStyle(
@@ -353,9 +348,7 @@ class _PostCard extends StatelessWidget {
                 height: 1.5,
               ),
             ),
-
             const SizedBox(height: 14),
-
             Row(
               children: [
                 _PostAction(
@@ -740,7 +733,9 @@ class _CreatePageState extends State<_CreatePage> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () {},
-                        icon: const Icon(Icons.photo_library_outlined),
+                        icon: const Icon(
+                          Icons.photo_library_outlined,
+                        ),
                         label: const Text('صورة'),
                       ),
                     ),
@@ -748,7 +743,9 @@ class _CreatePageState extends State<_CreatePage> {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () {},
-                        icon: const Icon(Icons.videocam_outlined),
+                        icon: const Icon(
+                          Icons.videocam_outlined,
+                        ),
                         label: const Text('فيديو'),
                       ),
                     ),
@@ -861,9 +858,8 @@ class _MessagesPage extends StatelessWidget {
                   final entry = conversations[index];
                   final username = entry.key;
                   final messages = entry.value;
-                  final last = messages.isEmpty
-                      ? null
-                      : messages.last;
+                  final last =
+                      messages.isEmpty ? null : messages.last;
 
                   final displayName = _displayName(username);
 
@@ -966,11 +962,11 @@ class _ChatPageState extends State<_ChatPage> {
 
   @override
   Widget build(BuildContext context) {
-final currentMessages = data.messages[widget.username] ?? [];
     return AnimatedBuilder(
       animation: data,
       builder: (context, _) {
-        final currentMessages = data.messages[widget.username] ?? [];
+        final currentMessages =
+            data.messages[widget.username] ?? [];
 
         return Scaffold(
           backgroundColor: const Color(0xFF07080D),
@@ -980,7 +976,10 @@ final currentMessages = data.messages[widget.username] ?? [];
               children: [
                 const CircleAvatar(
                   radius: 19,
-                  child: Icon(Icons.person, size: 20),
+                  child: Icon(
+                    Icons.person,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Text(widget.name),
@@ -995,7 +994,8 @@ final currentMessages = data.messages[widget.username] ?? [];
                   itemCount: currentMessages.length,
                   itemBuilder: (context, index) {
                     final message = currentMessages[index];
-                    final mine = message.sender == data.username;
+                    final mine =
+                        message.sender == data.username;
 
                     return Align(
                       alignment: mine
@@ -1004,9 +1004,12 @@ final currentMessages = data.messages[widget.username] ?? [];
                       child: Container(
                         constraints: BoxConstraints(
                           maxWidth:
-                              MediaQuery.of(context).size.width * 0.78,
+                              MediaQuery.of(context).size.width *
+                                  0.78,
                         ),
-                        margin: const EdgeInsets.only(bottom: 10),
+                        margin: const EdgeInsets.only(
+                          bottom: 10,
+                        ),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -1015,7 +1018,8 @@ final currentMessages = data.messages[widget.username] ?? [];
                           color: mine
                               ? const Color(0xFF006D8D)
                               : const Color(0xFF1A1D27),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius:
+                              BorderRadius.circular(16),
                         ),
                         child: Column(
                           crossAxisAlignment: mine
@@ -1051,20 +1055,25 @@ final currentMessages = data.messages[widget.username] ?? [];
                     children: [
                       IconButton(
                         onPressed: () {},
-                        icon: const Icon(Icons.add_circle_outline),
+                        icon: const Icon(
+                          Icons.add_circle_outline,
+                        ),
                       ),
                       Expanded(
                         child: TextField(
                           controller: controller,
                           minLines: 1,
                           maxLines: 5,
-                          textInputAction: TextInputAction.newline,
+                          textInputAction:
+                              TextInputAction.newline,
                           decoration: InputDecoration(
                             hintText: 'اكتب رسالة...',
                             filled: true,
-                            fillColor: const Color(0xFF151720),
+                            fillColor:
+                                const Color(0xFF151720),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(22),
+                              borderRadius:
+                                  BorderRadius.circular(22),
                               borderSide: BorderSide.none,
                             ),
                           ),
@@ -1118,7 +1127,6 @@ class _ProfilePage extends StatelessWidget {
               ),
             ],
           ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -1164,7 +1172,8 @@ class _ProfilePage extends StatelessWidget {
                   ],
                   const SizedBox(height: 22),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment:
+                        MainAxisAlignment.spaceEvenly,
                     children: [
                       _ProfileStat(
                         value: '${myPosts.length}',
@@ -1185,7 +1194,8 @@ class _ProfilePage extends StatelessWidget {
                     width: double.infinity,
                     child: OutlinedButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(
                           const SnackBar(
                             content: Text(
                               'تعديل الملف الشخصي',
@@ -1193,7 +1203,9 @@ class _ProfilePage extends StatelessWidget {
                           ),
                         );
                       },
-                      child: const Text('تعديل الملف الشخصي'),
+                      child: const Text(
+                        'تعديل الملف الشخصي',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -1211,7 +1223,6 @@ class _ProfilePage extends StatelessWidget {
               ),
             ),
           ),
-
           if (myPosts.isEmpty)
             const SliverToBoxAdapter(
               child: Padding(
@@ -1308,7 +1319,6 @@ class _SettingsPage extends StatelessWidget {
               const _SettingsHeader(
                 title: 'الحساب والخصوصية',
               ),
-
               SwitchListTile(
                 title: const Text('حساب خاص'),
                 subtitle: const Text(
@@ -1317,7 +1327,6 @@ class _SettingsPage extends StatelessWidget {
                 value: data.privateAccount,
                 onChanged: data.setPrivateAccount,
               ),
-
               SwitchListTile(
                 title: const Text('حالة النشاط'),
                 subtitle: const Text(
@@ -1326,45 +1335,37 @@ class _SettingsPage extends StatelessWidget {
                 value: data.activityStatus,
                 onChanged: data.setActivityStatus,
               ),
-
               SwitchListTile(
                 title: const Text('السماح بالرسائل'),
                 value: data.allowMessages,
                 onChanged: data.setAllowMessages,
               ),
-
               const _SettingsHeader(
                 title: 'الإشعارات',
               ),
-
               SwitchListTile(
                 title: const Text('الإشعارات'),
                 value: data.notifications,
                 onChanged: data.setNotifications,
               ),
-
               SwitchListTile(
                 title: const Text('الأصوات'),
                 value: data.sounds,
                 onChanged: data.setSounds,
               ),
-
               const _SettingsHeader(
                 title: 'الحساب',
               ),
-
               ListTile(
                 leading: const Icon(Icons.person_outline),
                 title: const Text('اسم المستخدم'),
                 subtitle: Text('@${data.username}'),
               ),
-
               ListTile(
                 leading: const Icon(Icons.cake_outlined),
                 title: const Text('العمر'),
                 subtitle: Text('${data.age} سنة'),
               ),
-
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('تسجيل الخروج'),
