@@ -4,7 +4,9 @@ pluginManagement {
         def localPropertiesFile = file("local.properties")
 
         if (!localPropertiesFile.exists()) {
-            throw new GradleException("local.properties is missing")
+            throw new GradleException(
+                "local.properties is missing"
+            )
         }
 
         localPropertiesFile.withInputStream {
@@ -13,14 +15,18 @@ pluginManagement {
 
         def flutterSdkPath = properties.getProperty("flutter.sdk")
 
-        if (flutterSdkPath == null) {
-            throw new GradleException("flutter.sdk not set in local.properties")
+        if (flutterSdkPath == null || flutterSdkPath.trim().isEmpty()) {
+            throw new GradleException(
+                "flutter.sdk is not set in local.properties"
+            )
         }
 
         return flutterSdkPath
     }()
 
-    includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
+    includeBuild(
+        "${flutterSdkPath}/packages/flutter_tools/gradle"
+    )
 
     repositories {
         google()
@@ -31,12 +37,14 @@ pluginManagement {
 
 plugins {
     id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-    id "com.android.application" version "9.0.1" apply false
-    id "org.jetbrains.kotlin.android" version "2.2.20" apply false
+    id "com.android.application" version "8.7.3" apply false
+    id "org.jetbrains.kotlin.android" version "2.1.20" apply false
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositoriesMode.set(
+        RepositoriesMode.PREFER_SETTINGS
+    )
 
     repositories {
         google()
@@ -45,4 +53,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "N"
+
 include ":app"
