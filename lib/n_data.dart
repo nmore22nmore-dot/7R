@@ -126,13 +126,17 @@ class NData extends ChangeNotifier {
     bool adult = false,
     String visibility = 'عام',
   }) {
+    final cleanText = text.trim();
+
+    if (cleanText.isEmpty) return;
+
     posts.insert(
       0,
       NPost(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         author: name,
         username: username,
-        text: text,
+        text: cleanText,
         adult: adult,
         visibility: visibility,
       ),
@@ -179,7 +183,9 @@ class NData extends ChangeNotifier {
   }
 
   List<NPost> postsOf(String user) {
-    return posts.where((post) => post.username == user).toList();
+    return posts
+        .where((post) => post.username == user)
+        .toList();
   }
 
   List<NPost> visiblePosts() {
@@ -208,7 +214,10 @@ class NData extends ChangeNotifier {
 
     if (clean.isEmpty) return;
 
-    final list = messages.putIfAbsent(user, () => []);
+    final list = messages.putIfAbsent(
+      user,
+      () => [],
+    );
 
     final now = DateTime.now();
 
@@ -230,6 +239,7 @@ class NData extends ChangeNotifier {
     items.sort((a, b) {
       final aTime =
           a.value.isEmpty ? 0 : a.value.last.hashCode;
+
       final bTime =
           b.value.isEmpty ? 0 : b.value.last.hashCode;
 
