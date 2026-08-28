@@ -24,47 +24,68 @@ workflows:
 
           echo "PROJECT STRUCTURE OK"
 
-      - name: Fix Android build versions
+      - name: Fix Android versions
         script: |
           set -e
 
-          echo "===== FIXING ANDROID BUILD VERSIONS ====="
+          echo "===== FIXING ANDROID VERSIONS ====="
 
-          # Android Gradle Plugin 8.11.1
+          # AGP 8.11.1
           if [ -f android/settings.gradle ]; then
-            sed -i.bak "s/id 'com.android.application' version '[0-9.]*'/id 'com.android.application' version '8.11.1'/g" android/settings.gradle
-            sed -i.bak 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.11.1"/g' android/settings.gradle
+            sed -i.bak -E "s/(com\.android\.application.*version[[:space:]]*[\"']?)[0-9.]+/\18.11.1/g" android/settings.gradle
 
             # Kotlin 2.2.20
-            sed -i.bak "s/id 'org.jetbrains.kotlin.android' version '[0-9.]*'/id 'org.jetbrains.kotlin.android' version '2.2.20'/g" android/settings.gradle
-            sed -i.bak 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "2.2.20"/g' android/settings.gradle
+            sed -i.bak -E "s/(org\.jetbrains\.kotlin\.android.*version[[:space:]]*[\"']?)[0-9.]+/\12.2.20/g" android/settings.gradle
           fi
 
-          # Older Android projects
+          # Older build.gradle projects
           if [ -f android/build.gradle ]; then
-            sed -i.bak "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.11.1/g" android/build.gradle
-            sed -i.bak "s/ext.kotlin_version = '[0-9.]*'/ext.kotlin_version = '2.2.20'/g" android/build.gradle
-            sed -i.bak 's/ext.kotlin_version = "[0-9.]*"/ext.kotlin_version = "2.2.20"/g' android/build.gradle
+            sed -i.bak -E "s/(com\.android\.tools\.build:gradle:)[0-9.]+/\18.11.1/g" android/build.gradle
+            sed -i.bak -E "s/(ext\.kotlin_version[[:space:]]*=[[:space:]]*[\"']?)[0-9.]+/\12.2.20/g" android/build.gradle
           fi
 
-          # Compile against Android SDK 36
+          # Force compileSdk 36 safely.
+          # Replace the entire compileSdk line instead of modifying part of it.
           if [ -f android/app/build.gradle ]; then
-            sed -i.bak "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]*/compileSdk = 36/g" android/app/build.gradle
-            sed -i.bak "s/compileSdk[[:space:]]*[0-9]*/compileSdk 36/g" android/app/build.gradle
+            sed -i.bak -E '/^[[:space:]]*compileSdk([[:space:]]*=[[:space:]]*|[[:space:]]+)[0-9.]+[[:space:]]*$/c\
+            compileSdk = 36' android/app/build.gradle
           fi
 
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i.bak "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]*/compileSdk = 36/g" android/app/build.gradle.kts
+          # Also repair any malformed compileSdk line left by a previous build.
+          if [ -f android/app/build.gradle ]; then
+            sed -i.bak -E 's/^[[:space:]]*compileSdk.*$/            compileSdk = 36/' android/app/build.gradle
           fi
 
-          echo "===== AGP ====="
-          grep -R "com.android.application" android --include="settings.gradle" --include="build.gradle" 2>/dev/null || true
+          echo "===== FINAL compileSdk ====="
+          grep -n "compileSdk" android/app/build.gradle || true
 
-          echo "===== KOTLIN ====="
-          grep -R "org.jetbrains.kotlin.android" android --include="settings.gradle" --include="build.gradle" 2>/dev/null || true
+          echo "===== FINAL AGP/KOTLIN ====="
+          grep -n "com.android.application\|org.jetbrains.kotlin.android" android/settings.gradle || true
 
-          echo "===== COMPILE SDK ====="
-          grep -R "compileSdk" android/app 2>/dev/null || true
+      - name: Verify Android configuration
+        script: |
+          set -e
+
+          echo "===== CHECKING compileSdk ====="
+
+          if grep -q "compileSdk = 36" android/app/build.gradle; then
+            echo "compileSdk 36 OK"
+          else
+            echo "ERROR: compileSdk 36 was not configured"
+            exit 1
+          fi
+
+          if grep -q "compileSdk 36=" android/app/build.gradle; then
+            echo "ERROR: malformed compileSdk detected"
+            exit 1
+          fi
+
+          if grep -q "compileSdk.*=.*=" android/app/build.gradle; then
+            echo "ERROR: malformed compileSdk assignment detected"
+            exit 1
+          fi
+
+          echo "ANDROID CONFIGURATION OK"
 
       - name: Flutter packages
         script: |
