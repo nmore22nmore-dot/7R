@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../n_data.dart';
+import 'n_data.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -76,6 +76,18 @@ class _FeedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final posts = data.visiblePosts();
+
+    if (posts.isEmpty) {
+      return const Center(
+        child: Text(
+          'لا توجد منشورات بعد',
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 18,
+          ),
+        ),
+      );
+    }
 
     return Stack(
       children: [
@@ -156,7 +168,6 @@ class _VideoPost extends StatelessWidget {
             ),
           ),
         ),
-
         Positioned(
           right: 16,
           left: 85,
@@ -195,7 +206,6 @@ class _VideoPost extends StatelessWidget {
             ],
           ),
         ),
-
         Positioned(
           left: 8,
           bottom: 25,
@@ -246,7 +256,10 @@ class _VideoPost extends StatelessWidget {
     );
   }
 
-  void _deletePost(BuildContext context, NPost post) {
+  void _deletePost(
+    BuildContext context,
+    NPost post,
+  ) {
     showDialog(
       context: context,
       builder: (_) {
@@ -307,6 +320,7 @@ class _VideoPost extends StatelessWidget {
                 maxLines: 3,
                 decoration: const InputDecoration(
                   hintText: 'اكتب تعليقك...',
+                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 10),
@@ -378,7 +392,10 @@ class _ExplorePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('استكشاف'),
+      child: Text(
+        'استكشاف',
+        style: TextStyle(fontSize: 22),
+      ),
     );
   }
 }
@@ -389,7 +406,10 @@ class _CreatePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('إنشاء منشور'),
+      child: Text(
+        'إنشاء منشور',
+        style: TextStyle(fontSize: 22),
+      ),
     );
   }
 }
@@ -400,7 +420,10 @@ class _MessagesPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('الرسائل'),
+      child: Text(
+        'الرسائل',
+        style: TextStyle(fontSize: 22),
+      ),
     );
   }
 }
@@ -411,7 +434,10 @@ class _ProfilePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Text('حسابي'),
+      child: Text(
+        'حسابي',
+        style: TextStyle(fontSize: 22),
+      ),
     );
   }
 }
