@@ -8,96 +8,55 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Prepare Flutter project
+      - name: Prepare project
         script: |
           set -e
-
-          echo "===== PROJECT ROOT ====="
+          echo "===== N PROJECT ====="
           pwd
           ls -la
-
           test -f pubspec.yaml
           test -d lib
           test -d android
           test -f android/settings.gradle
           test -f android/app/build.gradle
 
-          echo "PROJECT STRUCTURE OK"
-
       - name: Fix Android Gradle Plugin
         script: |
           set -e
 
-          echo "===== BEFORE AGP FIX ====="
-          grep -R "com.android.application" android/settings.gradle android/build.gradle android/settings.gradle.kts 2>/dev/null || true
+          echo "===== CURRENT AGP ====="
+          grep -R "com.android.application" android/settings.gradle 2>/dev/null || true
 
-          # Upgrade Android Gradle Plugin to Flutter-supported version
           if [ -f android/settings.gradle ]; then
-            sed -i.bak "s/com.android.application' version '[0-9.]*'/com.android.application' version '8.11.1'/g" android/settings.gradle
-            sed -i.bak 's/com.android.application" version "[0-9.]*"/com.android.application" version "8.11.1"/g' android/settings.gradle
+            sed -i.bak "s/id 'com.android.application' version '[0-9.]*'/id 'com.android.application' version '8.11.1'/g" android/settings.gradle
+            sed -i.bak 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.11.1"/g' android/settings.gradle
           fi
 
-          if [ -f android/settings.gradle.kts ]; then
-            sed -i.bak 's/id("com.android.application") version("[^"]*")/id("com.android.application") version("8.11.1")/g' android/settings.gradle.kts
-          fi
+          echo "===== AGP AFTER FIX ====="
+          grep -R "com.android.application" android/settings.gradle 2>/dev/null || true
 
-          if [ -f android/build.gradle ]; then
-            sed -i.bak "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.11.1/g" android/build.gradle
-          fi
-
-          echo "===== AFTER AGP FIX ====="
-          grep -R "com.android.application" android/settings.gradle android/build.gradle android/settings.gradle.kts 2>/dev/null || true
-
-      - name: Verify Gradle configuration
-        script: |
-          set -e
-
-          echo "===== GRADLE VERSION ====="
-          cd android
-          ./gradlew --version
-          cd ..
-
-          echo "===== AGP CONFIGURATION ====="
-          grep -R "8.11.1" android 2>/dev/null || true
-
-      - name: Get Flutter packages
+      - name: Flutter packages
         script: |
           set -e
           flutter clean
           flutter pub get
 
-      - name: Check Flutter
-        script: |
-          set -e
-          flutter --version
-          flutter doctor -v
-
-      - name: Analyze Dart
+      - name: Flutter analyze
         script: |
           set -e
           flutter analyze
 
-      - name: Build release APK
+      - name: Build APK
         script: |
           set -e
-
-          echo "===== BUILDING N RELEASE APK ====="
-
           flutter build apk --release
 
       - name: Verify APK
         script: |
           set -e
-
-          APK="build/app/outputs/flutter-apk/app-release.apk"
-
-          test -f "$APK"
-
-          echo "======================================"
+          test -f build/app/outputs/flutter-apk/app-release.apk
+          ls -lh build/app/outputs/flutter-apk/app-release.apk
           echo "N APK CREATED SUCCESSFULLY"
-          echo "======================================"
-
-          ls -lh "$APK"
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
