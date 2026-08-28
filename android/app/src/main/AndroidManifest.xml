@@ -6,7 +6,7 @@
     <application
         android:name="${applicationName}"
         android:label="N"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@android:drawable/sym_def_app_icon"
         android:usesCleartextTraffic="false">
 
         <activity
