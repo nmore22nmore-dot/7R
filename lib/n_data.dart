@@ -10,6 +10,8 @@ class NPost {
     this.comments = 0,
     this.adult = false,
     this.visibility = 'عام',
+    this.verified = false,
+    this.video = false,
   });
 
   final String id;
@@ -24,6 +26,10 @@ class NPost {
   bool saved = false;
   bool adult;
   String visibility;
+
+  // خصائص المنشور المستخدمة في واجهة N
+  bool verified;
+  bool video;
 }
 
 class NMessage {
@@ -67,6 +73,12 @@ class NData extends ChangeNotifier {
   bool notifications = true;
   bool sounds = true;
 
+  // نظام الداعم والعملات والشارات
+  int supporterLevel = 0;
+  int coins = 0;
+
+  final List<String> badges = [];
+
   final List<NPost> posts = [
     NPost(
       id: 'official-1',
@@ -75,6 +87,7 @@ class NData extends ChangeNotifier {
       text: 'مرحباً بك في N 👋',
       likes: 1240,
       comments: 86,
+      verified: true,
     ),
     NPost(
       id: 'official-2',
@@ -83,6 +96,7 @@ class NData extends ChangeNotifier {
       text: 'شارك أفكارك وصورك وفيديوهاتك ولحظاتك مع مجتمع N.',
       likes: 842,
       comments: 41,
+      verified: true,
     ),
   ];
 
@@ -125,6 +139,7 @@ class NData extends ChangeNotifier {
     String text, {
     bool adult = false,
     String visibility = 'عام',
+    bool video = false,
   }) {
     final cleanText = text.trim();
 
@@ -139,6 +154,7 @@ class NData extends ChangeNotifier {
         text: cleanText,
         adult: adult,
         visibility: visibility,
+        video: video,
       ),
     );
 
