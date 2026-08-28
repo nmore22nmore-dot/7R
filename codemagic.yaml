@@ -24,31 +24,47 @@ workflows:
 
           echo "PROJECT STRUCTURE OK"
 
-      - name: Fix Android Gradle and Kotlin versions
+      - name: Fix Android build versions
         script: |
           set -e
 
           echo "===== FIXING ANDROID BUILD VERSIONS ====="
 
+          # Android Gradle Plugin 8.11.1
           if [ -f android/settings.gradle ]; then
             sed -i.bak "s/id 'com.android.application' version '[0-9.]*'/id 'com.android.application' version '8.11.1'/g" android/settings.gradle
             sed -i.bak 's/id "com.android.application" version "[0-9.]*"/id "com.android.application" version "8.11.1"/g' android/settings.gradle
 
+            # Kotlin 2.2.20
             sed -i.bak "s/id 'org.jetbrains.kotlin.android' version '[0-9.]*'/id 'org.jetbrains.kotlin.android' version '2.2.20'/g" android/settings.gradle
             sed -i.bak 's/id "org.jetbrains.kotlin.android" version "[0-9.]*"/id "org.jetbrains.kotlin.android" version "2.2.20"/g' android/settings.gradle
           fi
 
+          # Older Android projects
           if [ -f android/build.gradle ]; then
             sed -i.bak "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.11.1/g" android/build.gradle
             sed -i.bak "s/ext.kotlin_version = '[0-9.]*'/ext.kotlin_version = '2.2.20'/g" android/build.gradle
             sed -i.bak 's/ext.kotlin_version = "[0-9.]*"/ext.kotlin_version = "2.2.20"/g' android/build.gradle
           fi
 
-          echo "===== FINAL AGP ====="
+          # Compile against Android SDK 36
+          if [ -f android/app/build.gradle ]; then
+            sed -i.bak "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]*/compileSdk = 36/g" android/app/build.gradle
+            sed -i.bak "s/compileSdk[[:space:]]*[0-9]*/compileSdk 36/g" android/app/build.gradle
+          fi
+
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i.bak "s/compileSdk[[:space:]]*=[[:space:]]*[0-9]*/compileSdk = 36/g" android/app/build.gradle.kts
+          fi
+
+          echo "===== AGP ====="
           grep -R "com.android.application" android --include="settings.gradle" --include="build.gradle" 2>/dev/null || true
 
-          echo "===== FINAL KOTLIN ====="
+          echo "===== KOTLIN ====="
           grep -R "org.jetbrains.kotlin.android" android --include="settings.gradle" --include="build.gradle" 2>/dev/null || true
+
+          echo "===== COMPILE SDK ====="
+          grep -R "compileSdk" android/app 2>/dev/null || true
 
       - name: Flutter packages
         script: |
