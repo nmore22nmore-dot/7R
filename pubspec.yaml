@@ -5,43 +5,19 @@ publish_to: 'none'
 version: 2.0.0+2
 
 environment:
-sdk: ">=3.3.0 <4.0.0"
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
-flutter:
-sdk: flutter
+  flutter:
+    sdk: flutter
 
-cupertino_icons: ^1.0.8
-
-Backend / Authentication / Database
-
-supabase_flutter: ^2.8.0
-
-Navigation
-
-go_router: ^15.1.2
-
-State management
-
-flutter_riverpod: ^2.6.1
-
-Images and videos
-
-image_picker: ^1.1.2
-
-Unique IDs
-
-uuid: ^4.5.1
-
-Date and time
-
-intl: ^0.19.0
+  cupertino_icons: ^1.0.8
 
 dev_dependencies:
-flutter_test:
-sdk: flutter
+  flutter_test:
+    sdk: flutter
 
-flutter_lints: ^4.0.0
+  flutter_lints: ^4.0.0
 
 flutter:
-uses-material-design: true
+  uses-material-design: true
