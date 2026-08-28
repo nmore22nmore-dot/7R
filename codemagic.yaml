@@ -8,17 +8,7 @@ workflows:
       flutter: stable
 
     scripts:
-      - name: Set up Flutter local.properties
-        script: |
-          set -e
-
-          echo "flutter.sdk=$HOME/programs/flutter" > "$CM_BUILD_DIR/android/local.properties"
-          echo "sdk.dir=$ANDROID_SDK_ROOT" >> "$CM_BUILD_DIR/android/local.properties"
-
-          echo "===== local.properties ====="
-          cat "$CM_BUILD_DIR/android/local.properties"
-
-      - name: Verify Flutter project
+      - name: Prepare Flutter project
         script: |
           set -e
 
@@ -37,27 +27,23 @@ workflows:
       - name: Get Flutter packages
         script: |
           set -e
-
           flutter clean
           flutter pub get
 
-      - name: Verify Flutter
+      - name: Check Flutter
         script: |
           set -e
-
           flutter --version
           flutter doctor -v
 
       - name: Analyze Dart
         script: |
           set -e
-
           flutter analyze
 
       - name: Build release APK
         script: |
           set -e
-
           flutter build apk --release
 
       - name: Verify APK
@@ -66,10 +52,7 @@ workflows:
 
           APK="build/app/outputs/flutter-apk/app-release.apk"
 
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not created."
-            exit 1
-          fi
+          test -f "$APK"
 
           echo "======================================"
           echo "N APK CREATED SUCCESSFULLY"
@@ -78,4 +61,4 @@ workflows:
           ls -lh "$APK"
 
     artifacts:
-      - build/app/outputs/flutter-apk/*.apk
+      - build/app/outputs/flutter-apk/app-release.apk
