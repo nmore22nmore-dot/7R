@@ -22,7 +22,7 @@ Future<void> main() async {
   try {
     await Supabase.initialize(
       url: supabaseUrl,
-      anonKey: supabaseAnonKey,
+      publishableKey: supabaseAnonKey,
     );
 
     runApp(const NApp());
