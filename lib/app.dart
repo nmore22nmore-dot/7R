@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'n_data.dart';
-import 'pages/home_page.dart';
 import 'pages/auth_page.dart';
+import 'pages/home_page.dart';
 
 class NApp extends StatefulWidget {
   const NApp({super.key});
@@ -23,11 +23,11 @@ class _NAppState extends State<NApp> {
   Future<void> _initializeApp() async {
     await data.initialize();
 
-    if (mounted) {
-      setState(() {
-        initialized = true;
-      });
-    }
+    if (!mounted) return;
+
+    setState(() {
+      initialized = true;
+    });
   }
 
   @override
@@ -42,6 +42,46 @@ class _NAppState extends State<NApp> {
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF00C8FF),
           brightness: Brightness.dark,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF07080D),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          backgroundColor: Color(0xFF07080D),
+          indicatorColor: Color(0xFF16232A),
+          labelTextStyle: WidgetStatePropertyAll(
+            TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Color(0xFF11131A),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(
+              Radius.circular(14),
+            ),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(
+              Radius.circular(14),
+            ),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(
+              Radius.circular(14),
+            ),
+            borderSide: BorderSide(
+              color: Color(0xFF00C8FF),
+            ),
+          ),
         ),
       ),
       builder: (context, child) {
@@ -71,9 +111,11 @@ class _LoadingPage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
-              width: 58,
-              height: 58,
-              child: CircularProgressIndicator(),
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+              ),
             ),
             SizedBox(height: 24),
             Text(
@@ -96,10 +138,14 @@ class NWelcomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF07080D),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 32,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -109,35 +155,42 @@ class NWelcomePage extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(32),
                     gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                       colors: [
                         Color(0xFF00C8FF),
                         Color(0xFFFF287A),
                       ],
                     ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x3300C8FF),
+                        blurRadius: 30,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
                   child: const Center(
                     child: Text(
                       'N',
                       style: TextStyle(
+                        color: Colors.white,
                         fontSize: 74,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 28),
-
                 const Text(
                   'N',
                   style: TextStyle(
+                    color: Colors.white,
                     fontSize: 42,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
                 const Text(
                   'شبكتك الاجتماعية الجديدة',
                   style: TextStyle(
@@ -145,9 +198,7 @@ class NWelcomePage extends StatelessWidget {
                     fontSize: 16,
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 const Text(
                   'فيديوهات • منشورات • قصص • رسائل • بث مباشر',
                   textAlign: TextAlign.center,
@@ -156,28 +207,28 @@ class NWelcomePage extends StatelessWidget {
                     fontSize: 13,
                   ),
                 ),
-
                 const SizedBox(height: 38),
-
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: () {
-                      Navigator.push(
-                        context,
+                      Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const AuthPage(),
                         ),
                       );
                     },
-                    child: const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'ابدأ الآن',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(58),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'ابدأ الآن',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
