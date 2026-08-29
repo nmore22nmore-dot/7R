@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data.dart';
+import '../n_data.dart';
 import 'home_page.dart';
 
 class AuthPage extends StatefulWidget {
@@ -59,10 +59,13 @@ class _AuthPageState extends State<AuthPage> {
       );
 
       if (age == null) {
+        if (mounted) {
+          setState(() {
+            loading = false;
+          });
+        }
+
         _showError('يرجى إدخال العمر بشكل صحيح');
-        setState(() {
-          loading = false;
-        });
         return;
       }
 
@@ -82,6 +85,30 @@ class _AuthPageState extends State<AuthPage> {
     });
 
     if (success) {
+      final session = data.supabase.auth.currentSession;
+
+      if (session == null) {
+        if (!isLogin) {
+          _showSuccess(
+            'تم إنشاء الحساب بنجاح. '
+            'إذا كان تأكيد البريد الإلكتروني مفعّلًا في Supabase، '
+            'افتح بريدك الإلكتروني ثم سجّل الدخول.',
+          );
+
+          setState(() {
+            isLogin = true;
+          });
+
+          _passwordController.clear();
+          return;
+        }
+
+        _showError(
+          'تمت العملية ولكن لا توجد جلسة تسجيل دخول.',
+        );
+        return;
+      }
+
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -112,13 +139,81 @@ class _AuthPageState extends State<AuthPage> {
       );
   }
 
+  void _showSuccess(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            textAlign: TextAlign.right,
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+  }
+
   void _switchMode() {
+    if (loading) return;
+
     FocusScope.of(context).unfocus();
+
+    _formKey.currentState?.reset();
 
     setState(() {
       isLogin = !isLogin;
       obscurePassword = true;
     });
+  }
+
+  Future<void> _resetPassword() async {
+    if (loading) return;
+
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty ||
+        !email.contains('@') ||
+        !email.contains('.')) {
+      _showError(
+        'أدخل بريدك الإلكتروني أولًا لاستعادة كلمة المرور.',
+      );
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      await data.supabase.auth.resetPasswordForEmail(
+        email,
+      );
+
+      if (!mounted) return;
+
+      _showSuccess(
+        'تم إرسال رابط استعادة كلمة المرور إلى بريدك الإلكتروني.',
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+
+      _showError(e.message);
+    } catch (_) {
+      if (!mounted) return;
+
+      _showError(
+        'تعذر إرسال رابط استعادة كلمة المرور.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -255,6 +350,10 @@ class _AuthPageState extends State<AuthPage> {
                             return 'لا يمكن أن يحتوي اسم المستخدم على مسافات';
                           }
 
+                          if (username.contains('@')) {
+                            return 'لا تكتب @ داخل اسم المستخدم';
+                          }
+
                           return null;
                         },
                       ),
@@ -311,8 +410,7 @@ class _AuthPageState extends State<AuthPage> {
                         icon: Icon(
                           obscurePassword
                               ? Icons.visibility_outlined
-                              : Icons
-                                  .visibility_off_outlined,
+                              : Icons.visibility_off_outlined,
                         ),
                       ),
                       onSubmitted: (_) {
@@ -449,13 +547,8 @@ class _AuthPageState extends State<AuthPage> {
                     if (isLogin) ...[
                       const SizedBox(height: 8),
                       TextButton(
-                        onPressed: loading
-                            ? null
-                            : () {
-                                _showError(
-                                  'استعادة كلمة المرور سيتم ربطها في الخطوة التالية.',
-                                );
-                              },
+                        onPressed:
+                            loading ? null : _resetPassword,
                         child: const Text(
                           'نسيت كلمة المرور؟',
                         ),
