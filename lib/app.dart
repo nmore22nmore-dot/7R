@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'pages/home_page.dart';
+import 'pages/auth_page.dart';
 
 class NApp extends StatelessWidget {
   const NApp({super.key});
@@ -98,7 +99,7 @@ class NWelcomePage extends StatelessWidget {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const HomePage(),
+                          builder: (_) => const AuthPage(),
                         ),
                       );
                     },
