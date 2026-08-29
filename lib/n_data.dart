@@ -1,328 +1,987 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NPost {
-NPost({
-required this.id,
-required this.author,
-required this.username,
-required this.text,
-this.likes = 0,
-this.comments = 0,
-this.adult = false,
-this.visibility = 'عام',
-this.verified = false,
-this.video = false,
-this.videoUrl,
-this.imageUrl,
-});
+  NPost({
+    required this.id,
+    required this.author,
+    required this.username,
+    required this.text,
+    this.likes = 0,
+    this.comments = 0,
+    this.adult = false,
+    this.visibility = 'عام',
+    this.verified = false,
+    this.video = false,
+    this.videoUrl,
+    this.imageUrl,
+    this.liked = false,
+    this.saved = false,
+  });
 
-final String id;
-final String author;
-final String username;
-final String text;
+  final String id;
+  final String author;
+  final String username;
+  final String text;
 
-int likes;
-int comments;
+  int likes;
+  int comments;
 
-bool liked = false;
-bool saved = false;
+  bool liked;
+  bool saved;
 
-bool adult;
-String visibility;
+  bool adult;
+  String visibility;
 
-bool verified;
-bool video;
+  bool verified;
+  bool video;
 
-/// رابط الفيديو الحقيقي عند وجوده.
-String? videoUrl;
+  String? videoUrl;
+  String? imageUrl;
 
-/// رابط الصورة الحقيقية عند وجودها.
-String? imageUrl;
+  factory NPost.fromMap(
+    Map<String, dynamic> map, {
+    int likes = 0,
+    int comments = 0,
+    bool liked = false,
+    bool saved = false,
+  }) {
+    final profile = map['profiles'] is Map<String, dynamic>
+        ? map['profiles'] as Map<String, dynamic>
+        : <String, dynamic>{};
+
+    return NPost(
+      id: map['id'].toString(),
+      author: (profile['name'] ?? 'مستخدم N').toString(),
+      username: (profile['username'] ?? '').toString(),
+      text: (map['text'] ?? '').toString(),
+      likes: likes,
+      comments: comments,
+      adult: map['adult'] == true,
+      visibility: (map['visibility'] ?? 'عام').toString(),
+      verified: profile['verified'] == true,
+      video: map['video'] == true,
+      videoUrl: map['video_url']?.toString(),
+      imageUrl: map['image_url']?.toString(),
+      liked: liked,
+      saved: saved,
+    );
+  }
 }
 
 class NMessage {
-NMessage({
-required this.sender,
-required this.text,
-required this.time,
-});
+  NMessage({
+    required this.sender,
+    required this.text,
+    required this.time,
+  });
 
-final String sender;
-final String text;
-final String time;
+  final String sender;
+  final String text;
+  final String time;
+
+  factory NMessage.fromMap(Map<String, dynamic> map) {
+    final created = DateTime.tryParse(
+      (map['created_at'] ?? '').toString(),
+    );
+
+    final time = created == null
+        ? ''
+        : '${created.hour.toString().padLeft(2, '0')}:'
+          '${created.minute.toString().padLeft(2, '0')}';
+
+    final senderProfile = map['profiles'] is Map<String, dynamic>
+        ? map['profiles'] as Map<String, dynamic>
+        : <String, dynamic>{};
+
+    return NMessage(
+      sender: (senderProfile['username'] ??
+              map['sender_username'] ??
+              'مستخدم')
+          .toString(),
+      text: (map['text'] ?? '').toString(),
+      time: time,
+    );
+  }
 }
 
 class NConversation {
-NConversation({
-required this.name,
-required this.username,
-this.messages = const [],
-});
+  NConversation({
+    required this.name,
+    required this.username,
+    this.messages = const [],
+  });
 
-final String name;
-final String username;
-final List<NMessage> messages;
+  final String name;
+  final String username;
+  final List<NMessage> messages;
 
-NMessage? get lastMessage =>
-messages.isEmpty ? null : messages.last;
+  NMessage? get lastMessage =>
+      messages.isEmpty ? null : messages.last;
 }
 
 class NData extends ChangeNotifier {
-String name = 'مستخدم N';
-String username = 'n_user';
-String email = '';
-int age = 25;
+  NData();
 
-bool loggedIn = false;
+  final SupabaseClient supabase = Supabase.instance.client;
 
-bool privateAccount = false;
-bool activityStatus = true;
-bool allowMessages = true;
-bool notifications = true;
-bool sounds = true;
+  String name = 'مستخدم N';
+  String username = 'n_user';
+  String email = '';
+  int age = 25;
 
-int supporterLevel = 0;
-int coins = 0;
+  bool loggedIn = false;
 
-final List<String> badges = [];
+  bool privateAccount = false;
+  bool activityStatus = true;
+  bool allowMessages = true;
+  bool notifications = true;
+  bool sounds = true;
 
-final List<NPost> posts = [
-NPost(
-id: 'official-1',
-author: 'N Official',
-username: 'n',
-text: 'مرحباً بك في N 👋',
-likes: 1240,
-comments: 86,
-verified: true,
-),
-NPost(
-id: 'official-2',
-author: 'N Official',
-username: 'n',
-text: 'شارك أفكارك وصورك وفيديوهاتك ولحظاتك مع مجتمع N.',
-likes: 842,
-comments: 41,
-verified: true,
-),
-];
+  int supporterLevel = 0;
+  int coins = 0;
 
-final Set<String> following = {};
+  String? avatarUrl;
 
-final Map<String, List<NMessage>> messages = {
-'ahmed': [
-NMessage(
-sender: 'Ahmed',
-text: 'مرحباً 👋',
-time: '10:20',
-),
-],
-'sara': [
-NMessage(
-sender: 'Sara',
-text: 'أهلاً بك في N',
-time: '11:05',
-),
-],
-};
+  final List<String> badges = [];
 
-bool get adultAllowed => age >= 21;
+  final List<NPost> posts = [];
 
-void login({
-required String newName,
-required String newUsername,
-required String newEmail,
-required int newAge,
-}) {
-name = newName;
-username = newUsername;
-email = newEmail;
-age = newAge;
-loggedIn = true;
-notifyListeners();
-}
+  final Set<String> following = {};
 
-void createPost(
-String text, {
-bool adult = false,
-String visibility = 'عام',
-bool video = false,
-String? videoUrl,
-String? imageUrl,
-}) {
-final cleanText = text.trim();
+  final Map<String, List<NMessage>> messages = {};
 
-if (cleanText.isEmpty &&
-    videoUrl == null &&
-    imageUrl == null) {
-  return;
-}
+  bool loading = false;
+  String? errorMessage;
 
-if (adult && !adultAllowed) {
-  return;
-}
+  bool get adultAllowed => age >= 21;
 
-posts.insert(
-  0,
-  NPost(
-    id: DateTime.now().microsecondsSinceEpoch.toString(),
-    author: name,
-    username: username,
-    text: cleanText,
-    adult: adult,
-    visibility: visibility,
-    video: video,
-    videoUrl: videoUrl,
-    imageUrl: imageUrl,
-  ),
-);
+  String? get userId => supabase.auth.currentUser?.id;
 
-notifyListeners();
+  /* =========================================================
+  INITIALIZATION
+  ========================================================= */
 
-}
+  Future<void> initialize() async {
+    loading = true;
+    errorMessage = null;
+    notifyListeners();
 
-void deletePost(NPost post) {
-posts.removeWhere((item) => item.id == post.id);
-notifyListeners();
-}
+    try {
+      final session = supabase.auth.currentSession;
 
-void like(NPost post) {
-post.liked = !post.liked;
-
-if (post.liked) {
-  post.likes++;
-} else if (post.likes > 0) {
-  post.likes--;
-}
-
-notifyListeners();
-
-}
-
-void comment(NPost post) {
-post.comments++;
-notifyListeners();
-}
-
-void save(NPost post) {
-post.saved = !post.saved;
-notifyListeners();
-}
-
-void follow(String user) {
-if (user == username) return;
-
-if (following.contains(user)) {
-  following.remove(user);
-} else {
-  following.add(user);
-}
-
-notifyListeners();
-
-}
-
-List<NPost> postsOf(String user) {
-return posts
-.where((post) => post.username == user)
-.toList();
-}
-
-List<NPost> visiblePosts() {
-return posts.where((post) {
-if (post.adult && !adultAllowed) {
-return false;
-}
-
-  if (post.visibility == 'خاص' &&
-      post.username != username) {
-    return false;
+      if (session != null) {
+        await loadCurrentUser();
+      }
+    } catch (e) {
+      errorMessage = e.toString();
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
   }
 
-  if (post.visibility == 'المتابعون' &&
-      post.username != username &&
-      !following.contains(post.username)) {
-    return false;
+  /* =========================================================
+  AUTH
+  ========================================================= */
+
+  Future<bool> signUp({
+    required String newName,
+    required String newUsername,
+    required String newEmail,
+    required String password,
+    required int newAge,
+  }) async {
+    errorMessage = null;
+
+    if (newName.trim().isEmpty ||
+        newUsername.trim().isEmpty ||
+        newEmail.trim().isEmpty ||
+        password.length < 6) {
+      errorMessage = 'يرجى إدخال البيانات بشكل صحيح';
+      notifyListeners();
+      return false;
+    }
+
+    if (newAge < 13) {
+      errorMessage = 'يجب أن يكون العمر 13 سنة فأكثر';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      final existing = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', newUsername.trim())
+          .maybeSingle();
+
+      if (existing != null) {
+        errorMessage = 'اسم المستخدم مستخدم بالفعل';
+        notifyListeners();
+        return false;
+      }
+
+      final response = await supabase.auth.signUp(
+        email: newEmail.trim(),
+        password: password,
+        data: {
+          'name': newName.trim(),
+          'username': newUsername.trim(),
+        },
+      );
+
+      final user = response.user;
+
+      if (user == null) {
+        errorMessage = 'تعذر إنشاء الحساب';
+        notifyListeners();
+        return false;
+      }
+
+      await supabase.from('profiles').upsert({
+        'id': user.id,
+        'name': newName.trim(),
+        'username': newUsername.trim(),
+        'email': newEmail.trim(),
+        'age': newAge,
+      });
+
+      name = newName.trim();
+      username = newUsername.trim();
+      email = newEmail.trim();
+      age = newAge;
+      loggedIn = response.session != null;
+
+      if (response.session != null) {
+        await loadCurrentUser();
+      }
+
+      notifyListeners();
+      return true;
+    } on AuthException catch (e) {
+      errorMessage = e.message;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      errorMessage = 'حدث خطأ أثناء إنشاء الحساب';
+      notifyListeners();
+      return false;
+    }
   }
 
-  return true;
-}).toList();
+  Future<bool> loginWithPassword({
+    required String emailAddress,
+    required String password,
+  }) async {
+    errorMessage = null;
 
-}
+    try {
+      await supabase.auth.signInWithPassword(
+        email: emailAddress.trim(),
+        password: password,
+      );
 
-void sendMessage(String user, String text) {
-final clean = text.trim();
+      await loadCurrentUser();
 
-if (clean.isEmpty || !allowMessages) {
-  return;
-}
+      return true;
+    } on AuthException catch (e) {
+      errorMessage = e.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      errorMessage = 'تعذر تسجيل الدخول';
+      notifyListeners();
+      return false;
+    }
+  }
 
-final list = messages.putIfAbsent(
-  user,
-  () => [],
-);
+  Future<void> loadCurrentUser() async {
+    final user = supabase.auth.currentUser;
 
-final now = DateTime.now();
+    if (user == null) {
+      loggedIn = false;
+      return;
+    }
 
-list.add(
-  NMessage(
-    sender: username,
-    text: clean,
-    time:
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-  ),
-);
+    final profile = await supabase
+        .from('profiles')
+        .select()
+        .eq('id', user.id)
+        .maybeSingle();
 
-notifyListeners();
+    if (profile == null) {
+      loggedIn = false;
+      return;
+    }
 
-}
+    name = (profile['name'] ?? 'مستخدم N').toString();
+    username = (profile['username'] ?? 'n_user').toString();
+    email = (profile['email'] ?? user.email ?? '').toString();
+    age = (profile['age'] ?? 25) as int;
 
-List<MapEntry<String, List<NMessage>>> sortedConversations() {
-final items = messages.entries.toList();
+    avatarUrl = profile['avatar_url']?.toString();
 
-items.sort((a, b) {
-  final aTime =
-      a.value.isEmpty ? 0 : a.value.last.hashCode;
+    privateAccount = profile['private_account'] == true;
+    activityStatus = profile['activity_status'] != false;
+    allowMessages = profile['allow_messages'] != false;
+    notifications = profile['notifications'] != false;
+    sounds = profile['sounds'] != false;
 
-  final bTime =
-      b.value.isEmpty ? 0 : b.value.last.hashCode;
+    supporterLevel =
+        (profile['supporter_level'] ?? 0) as int;
 
-  return bTime.compareTo(aTime);
-});
+    coins = (profile['coins'] ?? 0) as int;
 
-return items;
+    loggedIn = true;
 
-}
+    await Future.wait([
+      loadPosts(),
+      loadFollowing(),
+    ]);
 
-void setPrivateAccount(bool value) {
-privateAccount = value;
-notifyListeners();
-}
+    notifyListeners();
+  }
 
-void setActivityStatus(bool value) {
-activityStatus = value;
-notifyListeners();
-}
+  /*
+   * هذه الدالة القديمة أبقيناها حتى لا تتعطل الملفات
+   * الحالية التي تستدعي data.login().
+   *
+   * الحساب الحقيقي يجب أن يستخدم loginWithPassword().
+   */
+  void login({
+    required String newName,
+    required String newUsername,
+    required String newEmail,
+    required int newAge,
+  }) {
+    name = newName;
+    username = newUsername;
+    email = newEmail;
+    age = newAge;
+    loggedIn = true;
+    notifyListeners();
+  }
 
-void setAllowMessages(bool value) {
-allowMessages = value;
-notifyListeners();
-}
+  Future<void> logout() async {
+    await supabase.auth.signOut();
 
-void setNotifications(bool value) {
-notifications = value;
-notifyListeners();
-}
+    name = 'مستخدم N';
+    username = 'n_user';
+    email = '';
+    age = 25;
+    loggedIn = false;
 
-void setSounds(bool value) {
-sounds = value;
-notifyListeners();
-}
+    posts.clear();
+    following.clear();
+    messages.clear();
 
-void logout() {
-loggedIn = false;
-notifyListeners();
-}
+    notifyListeners();
+  }
+
+  /* =========================================================
+  POSTS
+  ========================================================= */
+
+  Future<void> loadPosts() async {
+    if (!loggedIn) return;
+
+    try {
+      final rows = await supabase
+          .from('posts')
+          .select(
+            '*, profiles!posts_user_id_fkey(*)',
+          )
+          .order('created_at', ascending: false);
+
+      final loaded = <NPost>[];
+
+      for (final row in rows) {
+        final map = Map<String, dynamic>.from(row);
+
+        final postId = map['id'].toString();
+
+        final likeRows = await supabase
+            .from('post_likes')
+            .select('user_id')
+            .eq('post_id', postId);
+
+        final commentRows = await supabase
+            .from('comments')
+            .select('id')
+            .eq('post_id', postId);
+
+        final liked = userId == null
+            ? false
+            : likeRows.any(
+                (like) =>
+                    like['user_id'].toString() == userId,
+              );
+
+        final saved = userId == null
+            ? false
+            : await _isSaved(postId);
+
+        loaded.add(
+          NPost.fromMap(
+            map,
+            likes: likeRows.length,
+            comments: commentRows.length,
+            liked: liked,
+            saved: saved,
+          ),
+        );
+      }
+
+      posts
+        ..clear()
+        ..addAll(loaded);
+
+      notifyListeners();
+    } catch (e) {
+      errorMessage = 'تعذر تحميل المنشورات';
+      notifyListeners();
+    }
+  }
+
+  Future<bool> createPost(
+    String text, {
+    bool adult = false,
+    String visibility = 'عام',
+    bool video = false,
+    String? videoUrl,
+    String? imageUrl,
+  }) async {
+    final cleanText = text.trim();
+
+    if (userId == null) {
+      errorMessage = 'يجب تسجيل الدخول أولاً';
+      notifyListeners();
+      return false;
+    }
+
+    if (cleanText.isEmpty &&
+        videoUrl == null &&
+        imageUrl == null) {
+      return false;
+    }
+
+    if (adult && !adultAllowed) {
+      errorMessage =
+          'محتوى +21 غير متاح لمن هم دون 21 عاماً';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      await supabase.from('posts').insert({
+        'user_id': userId,
+        'text': cleanText,
+        'adult': adult,
+        'visibility': visibility,
+        'video': video,
+        'video_url': videoUrl,
+        'image_url': imageUrl,
+      });
+
+      await loadPosts();
+
+      return true;
+    } catch (_) {
+      errorMessage = 'تعذر نشر المنشور';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> deletePost(NPost post) async {
+    if (userId == null) return;
+
+    try {
+      await supabase
+          .from('posts')
+          .delete()
+          .eq('id', post.id)
+          .eq('user_id', userId!);
+
+      posts.removeWhere(
+        (item) => item.id == post.id,
+      );
+
+      notifyListeners();
+    } catch (_) {
+      errorMessage = 'تعذر حذف المنشور';
+      notifyListeners();
+    }
+  }
+
+  List<NPost> visiblePosts() {
+    return posts.where((post) {
+      if (post.adult && !adultAllowed) {
+        return false;
+      }
+
+      if (post.visibility == 'خاص' &&
+          post.username != username) {
+        return false;
+      }
+
+      if (post.visibility == 'المتابعون' &&
+          post.username != username &&
+          !following.contains(post.username)) {
+        return false;
+      }
+
+      return true;
+    }).toList();
+  }
+
+  List<NPost> postsOf(String user) {
+    return posts
+        .where((post) => post.username == user)
+        .toList();
+  }
+
+  /* =========================================================
+  LIKE
+  ========================================================= */
+
+  Future<void> like(NPost post) async {
+    if (userId == null) return;
+
+    try {
+      if (post.liked) {
+        await supabase
+            .from('post_likes')
+            .delete()
+            .eq('post_id', post.id)
+            .eq('user_id', userId!);
+
+        post.liked = false;
+
+        if (post.likes > 0) {
+          post.likes--;
+        }
+      } else {
+        await supabase.from('post_likes').insert({
+          'post_id': post.id,
+          'user_id': userId,
+        });
+
+        post.liked = true;
+        post.likes++;
+      }
+
+      notifyListeners();
+    } catch (_) {
+      errorMessage = 'تعذر تحديث الإعجاب';
+      notifyListeners();
+    }
+  }
+
+  /* =========================================================
+  COMMENTS
+  ========================================================= */
+
+  Future<bool> addComment(
+    NPost post,
+    String text,
+  ) async {
+    if (userId == null) return false;
+
+    final clean = text.trim();
+
+    if (clean.isEmpty) return false;
+
+    try {
+      await supabase.from('comments').insert({
+        'post_id': post.id,
+        'user_id': userId,
+        'text': clean,
+      });
+
+      post.comments++;
+      notifyListeners();
+
+      return true;
+    } catch (_) {
+      errorMessage = 'تعذر إرسال التعليق';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /*
+   * أبقينا comment() للتوافق مع HomePage الحالية.
+   */
+  Future<void> comment(NPost post) async {
+    if (userId == null) return;
+
+    try {
+      await supabase.from('comments').insert({
+        'post_id': post.id,
+        'user_id': userId,
+        'text': '',
+      });
+
+      post.comments++;
+      notifyListeners();
+    } catch (_) {
+      errorMessage = 'تعذر إضافة التعليق';
+      notifyListeners();
+    }
+  }
+
+  /* =========================================================
+  SAVE
+  ========================================================= */
+
+  Future<bool> _isSaved(String postId) async {
+    if (userId == null) return false;
+
+    final row = await supabase
+        .from('saved_posts')
+        .select('post_id')
+        .eq('post_id', postId)
+        .eq('user_id', userId!)
+        .maybeSingle();
+
+    return row != null;
+  }
+
+  Future<void> save(NPost post) async {
+    if (userId == null) return;
+
+    try {
+      if (post.saved) {
+        await supabase
+            .from('saved_posts')
+            .delete()
+            .eq('post_id', post.id)
+            .eq('user_id', userId!);
+
+        post.saved = false;
+      } else {
+        await supabase.from('saved_posts').insert({
+          'post_id': post.id,
+          'user_id': userId,
+        });
+
+        post.saved = true;
+      }
+
+      notifyListeners();
+    } catch (_) {
+      errorMessage = 'تعذر تحديث المحفوظات';
+      notifyListeners();
+    }
+  }
+
+  /* =========================================================
+  FOLLOW
+  ========================================================= */
+
+  Future<void> loadFollowing() async {
+    if (userId == null) return;
+
+    try {
+      final rows = await supabase
+          .from('follows')
+          .select('following_id, profiles!follows_following_id_fkey(username)')
+          .eq('follower_id', userId!);
+
+      following.clear();
+
+      for (final row in rows) {
+        final profile = row['profiles'];
+
+        if (profile is Map<String, dynamic>) {
+          final value = profile['username'];
+
+          if (value != null) {
+            following.add(value.toString());
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> follow(String user) async {
+    if (userId == null || user == username) return;
+
+    try {
+      final target = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', user)
+          .maybeSingle();
+
+      if (target == null) return;
+
+      final targetId = target['id'].toString();
+
+      if (following.contains(user)) {
+        await supabase
+            .from('follows')
+            .delete()
+            .eq('follower_id', userId!)
+            .eq('following_id', targetId);
+
+        following.remove(user);
+      } else {
+        await supabase.from('follows').insert({
+          'follower_id': userId,
+          'following_id': targetId,
+        });
+
+        following.add(user);
+      }
+
+      notifyListeners();
+    } catch (_) {
+      errorMessage = 'تعذر تحديث المتابعة';
+      notifyListeners();
+    }
+  }
+
+  /* =========================================================
+  MESSAGES
+  ========================================================= */
+
+  Future<void> loadConversations() async {
+    if (userId == null) return;
+
+    /*
+     * سيتم ربط شاشة المحادثات بهذه الوظيفة بعد تعديل
+     * HomePage / MessagesPage للقراءة من conversations
+     * وconversation_members.
+     */
+  }
+
+  Future<String?> _getConversationId(
+    String otherUserId,
+  ) async {
+    if (userId == null) return null;
+
+    final myRows = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', userId!);
+
+    final otherRows = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', otherUserId);
+
+    final mine = myRows
+        .map((row) => row['conversation_id'].toString())
+        .toSet();
+
+    for (final row in otherRows) {
+      final id = row['conversation_id'].toString();
+
+      if (mine.contains(id)) {
+        return id;
+      }
+    }
+
+    return null;
+  }
+
+  Future<String?> _createConversation(
+    String otherUserId,
+  ) async {
+    if (userId == null) return null;
+
+    final existing =
+        await _getConversationId(otherUserId);
+
+    if (existing != null) {
+      return existing;
+    }
+
+    final conversation = await supabase
+        .from('conversations')
+        .insert({})
+        .select('id')
+        .single();
+
+    final conversationId =
+        conversation['id'].toString();
+
+    await supabase.from('conversation_members').insert([
+      {
+        'conversation_id': conversationId,
+        'user_id': userId,
+      },
+      {
+        'conversation_id': conversationId,
+        'user_id': otherUserId,
+      },
+    ]);
+
+    return conversationId;
+  }
+
+  Future<void> sendMessage(
+    String user,
+    String text,
+  ) async {
+    if (userId == null || !allowMessages) return;
+
+    final clean = text.trim();
+
+    if (clean.isEmpty) return;
+
+    try {
+      final target = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', user)
+          .maybeSingle();
+
+      if (target == null) return;
+
+      final otherUserId = target['id'].toString();
+
+      final conversationId =
+          await _createConversation(otherUserId);
+
+      if (conversationId == null) return;
+
+      await supabase.from('messages').insert({
+        'conversation_id': conversationId,
+        'sender_id': userId,
+        'text': clean,
+      });
+
+      final list = messages.putIfAbsent(
+        user,
+        () => [],
+      );
+
+      final now = DateTime.now();
+
+      list.add(
+        NMessage(
+          sender: username,
+          text: clean,
+          time:
+              '${now.hour.toString().padLeft(2, '0')}:'
+              '${now.minute.toString().padLeft(2, '0')}',
+        ),
+      );
+
+      notifyListeners();
+    } catch (_) {
+      errorMessage = 'تعذر إرسال الرسالة';
+      notifyListeners();
+    }
+  }
+
+  List<MapEntry<String, List<NMessage>>>
+      sortedConversations() {
+    final items = messages.entries.toList();
+
+    items.sort((a, b) {
+      final aTime =
+          a.value.isEmpty ? '' : a.value.last.time;
+
+      final bTime =
+          b.value.isEmpty ? '' : b.value.last.time;
+
+      return bTime.compareTo(aTime);
+    });
+
+    return items;
+  }
+
+  /* =========================================================
+  SETTINGS
+  ========================================================= */
+
+  Future<void> _updateProfile(
+    Map<String, dynamic> values,
+  ) async {
+    if (userId == null) return;
+
+    await supabase
+        .from('profiles')
+        .update(values)
+        .eq('id', userId!);
+  }
+
+  Future<void> setPrivateAccount(
+    bool value,
+  ) async {
+    privateAccount = value;
+
+    try {
+      await _updateProfile({
+        'private_account': value,
+      });
+    } catch (_) {}
+
+    notifyListeners();
+  }
+
+  Future<void> setActivityStatus(
+    bool value,
+  ) async {
+    activityStatus = value;
+
+    try {
+      await _updateProfile({
+        'activity_status': value,
+      });
+    } catch (_) {}
+
+    notifyListeners();
+  }
+
+  Future<void> setAllowMessages(
+    bool value,
+  ) async {
+    allowMessages = value;
+
+    try {
+      await _updateProfile({
+        'allow_messages': value,
+      });
+    } catch (_) {}
+
+    notifyListeners();
+  }
+
+  Future<void> setNotifications(
+    bool value,
+  ) async {
+    notifications = value;
+
+    try {
+      await _updateProfile({
+        'notifications': value,
+      });
+    } catch (_) {}
+
+    notifyListeners();
+  }
+
+  Future<void> setSounds(
+    bool value,
+  ) async {
+    sounds = value;
+
+    try {
+      await _updateProfile({
+        'sounds': value,
+      });
+    } catch (_) {}
+
+    notifyListeners();
+  }
 }
 
 final NData data = NData();
