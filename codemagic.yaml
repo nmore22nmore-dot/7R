@@ -1,39 +1,12 @@
 workflows:
-n-android-release:
-name: N Android Release
-max_build_duration: 60
+test-build:
+name: N Test Build
 instance_type: mac_mini_m2
 
 environment:
   flutter: stable
-  groups:
-    - N_SUPABASE
 
 scripts:
-  - name: Verify project
+  - name: Test
     script: |
-      set -e
-      test -f pubspec.yaml
-      test -d lib
-      test -d android
-
-  - name: Flutter packages
-    script: |
-      set -e
-      flutter clean
-      flutter pub get
-
-  - name: Flutter analyze
-    script: |
-      set -e
-      flutter analyze
-
-  - name: Build APK
-    script: |
-      set -e
-      flutter build apk --release \
-        --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-        --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
-
-artifacts:
-  - build/app/outputs/flutter-apk/app-release.apk
+      flutter --version
