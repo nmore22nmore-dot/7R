@@ -112,6 +112,7 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
                 );
               },
             ),
+
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,
             left: 16,
@@ -1081,7 +1082,7 @@ class _CreatePageState extends State<CreatePage> {
 
       if (image == null) return;
 
-      await videoController?.dispose();
+      videoController?.dispose();
       videoController = null;
 
       if (!mounted) return;
@@ -1110,7 +1111,8 @@ class _CreatePageState extends State<CreatePage> {
 
       if (video == null) return;
 
-      await videoController?.dispose();
+      videoController?.dispose();
+      videoController = null;
 
       if (!mounted) return;
 
@@ -1120,20 +1122,20 @@ class _CreatePageState extends State<CreatePage> {
         loadingVideo = true;
       });
 
-      final controller = VideoPlayerController.file(
+      final newController = VideoPlayerController.file(
         File(video.path),
       );
 
-      await controller.initialize();
-      await controller.setLooping(true);
+      await newController.initialize();
+      await newController.setLooping(true);
 
       if (!mounted) {
-        await controller.dispose();
+        newController.dispose();
         return;
       }
 
       setState(() {
-        videoController = controller;
+        videoController = newController;
         loadingVideo = false;
       });
     } catch (_) {
@@ -1575,10 +1577,16 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                     IconButton(
                       onPressed: () {
+                        final text =
+                            controller.text.trim();
+
+                        if (text.isEmpty) return;
+
                         data.sendMessage(
                           widget.username,
-                          controller.text,
+                          text,
                         );
+
                         controller.clear();
                       },
                       icon: const Icon(Icons.send),
@@ -1691,7 +1699,11 @@ class ProfilePage extends StatelessWidget {
           const SizedBox(height: 10),
           ...posts.map(
             (post) => ListTile(
-              title: Text(post.text),
+              title: Text(
+                post.text.isEmpty
+                    ? 'منشور بصورة أو فيديو'
+                    : post.text,
+              ),
               subtitle: Text(
                 '${post.likes} إعجاب • ${post.comments} تعليق',
               ),
@@ -1776,27 +1788,35 @@ class SettingsPage extends StatelessWidget {
               ),
               const Divider(),
               ListTile(
-                leading:
-                    const Icon(Icons.military_tech),
-                title:
-                    const Text('مستوى الداعم'),
-                trailing:
-                    Text('${data.supporterLevel}'),
+                leading: const Icon(
+                  Icons.military_tech,
+                ),
+                title: const Text(
+                  'مستوى الداعم',
+                ),
+                trailing: Text(
+                  '${data.supporterLevel}',
+                ),
               ),
               ListTile(
-                leading:
-                    const Icon(Icons.stars),
-                title:
-                    const Text('الشارات والجوائز'),
-                subtitle:
-                    Text(data.badges.join(' • ')),
+                leading: const Icon(
+                  Icons.stars,
+                ),
+                title: const Text(
+                  'الشارات والجوائز',
+                ),
+                subtitle: Text(
+                  data.badges.join(' • '),
+                ),
               ),
               ListTile(
                 leading: const Icon(
                   Icons.monetization_on,
                 ),
                 title: const Text('الرصيد'),
-                trailing: Text('${data.coins}'),
+                trailing: Text(
+                  '${data.coins}',
+                ),
               ),
             ],
           ),
