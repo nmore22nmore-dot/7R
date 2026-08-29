@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../n_data.dart';
 import 'home_page.dart';
@@ -401,12 +402,14 @@ class _AuthPageState extends State<AuthPage> {
                           ? TextInputAction.done
                           : TextInputAction.next,
                       suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            obscurePassword =
-                                !obscurePassword;
-                          });
-                        },
+                        onPressed: loading
+                            ? null
+                            : () {
+                                setState(() {
+                                  obscurePassword =
+                                      !obscurePassword;
+                                });
+                              },
                         icon: Icon(
                           obscurePassword
                               ? Icons.visibility_outlined
