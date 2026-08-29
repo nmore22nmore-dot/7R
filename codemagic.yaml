@@ -1,59 +1,71 @@
 workflows:
-n-android-release:
-name: N Android Release
-max_build_duration: 60
-instance_type: mac_mini_m2
+  n-android-release:
+    name: N Android Release
+    max_build_duration: 60
+    instance_type: mac_mini_m2
 
-environment:
-  flutter: stable
-  groups:
-    - N_SUPABASE
+    environment:
+      flutter: stable
+      groups:
+        - N_SUPABASE
 
-scripts:
-  - name: Verify project
-    script: |
-      set -e
+    scripts:
+      - name: Verify project
+        script: |
+          set -e
 
-      test -f pubspec.yaml
-      test -d lib
-      test -d android
+          echo "===== N PROJECT ====="
 
-      echo "PROJECT STRUCTURE OK"
+          test -f pubspec.yaml
+          test -d lib
+          test -d android
+          test -f android/settings.gradle
+          test -f android/app/build.gradle
 
-  - name: Flutter packages
-    script: |
-      set -e
+          echo "PROJECT STRUCTURE OK"
 
-      flutter clean
-      flutter pub get
+      - name: Verify Supabase configuration
+        script: |
+          set -e
 
-  - name: Flutter analyze
-    script: |
-      set -e
+          echo "===== CHECK SUPABASE ====="
 
-      flutter analyze
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
 
-  - name: Build APK
-    script: |
-      set -e
+          echo "SUPABASE CONFIGURATION OK"
 
-      test -n "$SUPABASE_URL"
-      test -n "$SUPABASE_PUBLISHABLE_KEY"
+      - name: Flutter packages
+        script: |
+          set -e
 
-      flutter build apk --release \
-        --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-        --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          flutter clean
+          flutter pub get
 
-  - name: Verify APK
-    script: |
-      set -e
+      - name: Flutter analyze
+        script: |
+          set -e
 
-      APK="build/app/outputs/flutter-apk/app-release.apk"
+          flutter analyze
 
-      test -f "$APK"
+      - name: Build APK
+        script: |
+          set -e
 
-      echo "===== N APK CREATED SUCCESSFULLY ====="
-      ls -lh "$APK"
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
-artifacts:
-  - build/app/outputs/flutter-apk/app-release.apk
+      - name: Verify APK
+        script: |
+          set -e
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          test -f "$APK"
+
+          echo "===== N APK CREATED SUCCESSFULLY ====="
+          ls -lh "$APK"
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
