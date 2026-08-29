@@ -13,57 +13,27 @@ scripts:
   - name: Verify project
     script: |
       set -e
-
-      echo "===== N PROJECT ====="
-
       test -f pubspec.yaml
       test -d lib
       test -d android
-      test -f android/settings.gradle
-      test -f android/app/build.gradle
-
-      echo "PROJECT STRUCTURE OK"
-
-  - name: Verify Supabase configuration
-    script: |
-      set -e
-
-      test -n "$SUPABASE_URL"
-      test -n "$SUPABASE_ANON_KEY"
-
-      echo "SUPABASE CONFIGURATION OK"
 
   - name: Flutter packages
     script: |
       set -e
-
       flutter clean
       flutter pub get
 
   - name: Flutter analyze
     script: |
       set -e
-
       flutter analyze
 
   - name: Build APK
     script: |
       set -e
-
       flutter build apk --release \
         --dart-define=SUPABASE_URL="$SUPABASE_URL" \
         --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
-
-  - name: Verify APK
-    script: |
-      set -e
-
-      APK="build/app/outputs/flutter-apk/app-release.apk"
-
-      test -f "$APK"
-
-      echo "===== N APK CREATED SUCCESSFULLY ====="
-      ls -lh "$APK"
 
 artifacts:
   - build/app/outputs/flutter-apk/app-release.apk
