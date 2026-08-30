@@ -42,6 +42,13 @@ workflows:
           flutter clean
           flutter pub get
 
+      - name: Show dependency tree
+        script: |
+          set -e
+
+          echo "===== FLUTTER DEPENDENCY TREE ====="
+          flutter pub deps --style=compact
+
       - name: Flutter analyze
         script: |
           set -e
