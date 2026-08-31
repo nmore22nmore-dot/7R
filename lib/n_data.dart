@@ -181,6 +181,44 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
+  // SET AUTHENTICATED USER
+  // =========================================================
+  //
+  // هذه الدالة مضافة لتتوافق مع main.dart
+  // الذي يستدعيها باستخدام:
+  //
+  // setAuthenticatedUser(
+  //   newName: ...,
+  //   newUsername: ...,
+  //   newEmail: ...,
+  //   newAge: ...,
+  // );
+  //
+  // =========================================================
+
+  void setAuthenticatedUser({
+    required String newName,
+    required String newUsername,
+    required String newEmail,
+    required int newAge,
+  }) {
+    name = newName.trim().isEmpty
+        ? 'مستخدم N'
+        : newName.trim();
+
+    username = newUsername.trim().isEmpty
+        ? 'n_user'
+        : newUsername.trim();
+
+    email = newEmail.trim();
+    age = newAge;
+
+    loggedIn = true;
+
+    notifyListeners();
+  }
+
+  // =========================================================
   // SIGN UP
   // =========================================================
 
@@ -455,34 +493,6 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
-  // AUTHENTICATED USER
-  // =========================================================
-
-  void setAuthenticatedUser(User user) {
-    name = (
-      user.userMetadata?['name'] ??
-      'مستخدم N'
-    ).toString();
-
-    username = (
-      user.userMetadata?['username'] ??
-      'n_user'
-    ).toString();
-
-    email = user.email ?? '';
-
-    age = _toInt(
-      user.userMetadata?['age'],
-      fallback: 25,
-    );
-
-    loggedIn = true;
-    errorMessage = null;
-
-    notifyListeners();
-  }
-
-  // =========================================================
   // HELPERS
   // =========================================================
 
@@ -514,12 +524,12 @@ class NData extends ChangeNotifier {
     required String newEmail,
     required int newAge,
   }) {
-    name = newName;
-    username = newUsername;
-    email = newEmail;
-    age = newAge;
-    loggedIn = true;
-    notifyListeners();
+    setAuthenticatedUser(
+      newName: newName,
+      newUsername: newUsername,
+      newEmail: newEmail,
+      newAge: newAge,
+    );
   }
 
   // =========================================================
@@ -1024,6 +1034,17 @@ class NData extends ChangeNotifier {
 
   // =========================================================
   // COMMENT
+  // =========================================================
+  //
+  // النص أصبح اختياريًا حتى يتوافق مع الاستدعاءات
+  // التي قد تستخدم:
+  //
+  // data.comment(post);
+  //
+  // أو:
+  //
+  // data.comment(post, text);
+  //
   // =========================================================
 
   Future<bool> comment(
