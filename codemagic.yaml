@@ -2,16 +2,26 @@ workflows:
 n_android_release:
 name: N Android Release
 instance_type: linux_x2
+max_build_duration: 60
 
 environment:
   flutter: stable
+  java: 17
   groups:
     - N_SUPABASE
 
 scripts:
+  - name: Configure Flutter Android
+    script: |
+      echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+
   - name: Get Flutter packages
     script: |
       flutter pub get
+
+  - name: Analyze project
+    script: |
+      flutter analyze
 
   - name: Build Android APK
     script: |
