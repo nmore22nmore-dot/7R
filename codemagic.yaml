@@ -1,40 +1,33 @@
 workflows:
-n_android_release:
-name: N Android Release
-instance_type: linux_x2
-max_build_duration: 60
+  n_android_release:
+    name: N Android Release
+    instance_type: linux_x2
+    max_build_duration: 60
 
-environment:
-  flutter: stable
-  java: 17
-  groups:
-    - N_SUPABASE
+    environment:
+      flutter: stable
+      java: 17
+      groups:
+        - N_SUPABASE
 
-triggering:
-  events:
-    - push
-  branch_patterns:
-    - pattern: main
-      include: true
+    scripts:
+      - name: Configure Android
+        script: |
+          echo "flutter.sdk=$FLUTTER_ROOT" > "$CM_BUILD_DIR/android/local.properties"
 
-scripts:
-  - name: Configure Flutter Android
-    script: |
-      echo "flutter.sdk=$FLUTTER_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Get packages
+        script: |
+          flutter pub get
 
-  - name: Get Flutter packages
-    script: |
-      flutter pub get
+      - name: Analyze
+        script: |
+          flutter analyze
 
-  - name: Analyze project
-    script: |
-      flutter analyze
+      - name: Build APK
+        script: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
-  - name: Build Android APK
-    script: |
-      flutter build apk --release \
-        --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-        --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-
-artifacts:
-  - build/app/outputs/flutter-apk/app-release.apk
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
