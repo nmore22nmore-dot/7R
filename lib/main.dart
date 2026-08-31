@@ -219,7 +219,9 @@ class _LoginPageState extends State<LoginPage> {
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const NHome()),
+          MaterialPageRoute(
+            builder: (_) => const NHome(),
+          ),
         );
 
         return;
@@ -233,7 +235,9 @@ class _LoginPageState extends State<LoginPage> {
       await data.loadCurrentUser();
 
       if (!data.loggedIn) {
-        message(data.errorMessage ?? 'تعذر تحميل الحساب');
+        message(
+          data.errorMessage ?? 'تعذر تحميل الحساب',
+        );
         return;
       }
 
@@ -241,12 +245,16 @@ class _LoginPageState extends State<LoginPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const NHome()),
+        MaterialPageRoute(
+          builder: (_) => const NHome(),
+        ),
       );
     } on AuthException catch (e) {
       message(e.message);
     } on PostgrestException catch (e) {
-      message('خطأ في قاعدة البيانات: ${e.message}');
+      message(
+        'خطأ في قاعدة البيانات: ${e.message}',
+      );
     } catch (e) {
       message('حدث خطأ أثناء العملية');
     }
@@ -260,7 +268,9 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
+              constraints: const BoxConstraints(
+                maxWidth: 500,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -302,7 +312,9 @@ class _LoginPageState extends State<LoginPage> {
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'الاسم',
-                        prefixIcon: Icon(Icons.person_outline),
+                        prefixIcon: Icon(
+                          Icons.person_outline,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -313,7 +325,9 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: const InputDecoration(
                       labelText: 'اسم المستخدم',
                       hintText: 'username',
-                      prefixIcon: Icon(Icons.alternate_email),
+                      prefixIcon: Icon(
+                        Icons.alternate_email,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -323,7 +337,9 @@ class _LoginPageState extends State<LoginPage> {
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'البريد الإلكتروني',
-                      prefixIcon: Icon(Icons.email_outlined),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -333,7 +349,9 @@ class _LoginPageState extends State<LoginPage> {
                     onSubmitted: (_) => submit(),
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
-                      prefixIcon: const Icon(Icons.lock_outline),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                      ),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() => hidden = !hidden);
@@ -350,7 +368,9 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 14),
                     OutlinedButton.icon(
                       onPressed: chooseBirthDate,
-                      icon: const Icon(Icons.cake_outlined),
+                      icon: const Icon(
+                        Icons.cake_outlined,
+                      ),
                       label: Text(
                         birthDate == null
                             ? 'اختيار تاريخ الميلاد'
@@ -364,11 +384,13 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 22),
                   FilledButton(
                     onPressed: data.loading ? null : submit,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        vertical: 14,
+                      ),
                       child: Text(
-                        register ? 'إنشاء الحساب' : 'تسجيل الدخول',
-                        style: const TextStyle(
+                        'متابعة',
+                        style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
                         ),
@@ -406,12 +428,12 @@ class NHome extends StatefulWidget {
 class _NHomeState extends State<NHome> {
   int index = 0;
 
-  final pages = const [
-    NVideoFeedPage(),
-    ExplorePage(),
-    CreatePage(),
-    MessagesPage(),
-    ProfilePage(),
+  late final List<Widget> pages = [
+    const NVideoFeedPage(),
+    const ExplorePage(),
+    const CreatePage(),
+    const MessagesPage(),
+    const ProfilePage(),
   ];
 
   @override
@@ -502,6 +524,72 @@ class PostCard extends StatelessWidget {
   final NPost post;
   final bool fullScreen;
 
+  Future<void> _showCommentDialog(
+    BuildContext context,
+  ) async {
+    final controller = TextEditingController();
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('إضافة تعليق'),
+            content: TextField(
+              controller: controller,
+              maxLines: 4,
+              maxLength: 1000,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'اكتب تعليقك...',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final text = controller.text.trim();
+
+                  if (text.isEmpty) {
+                    return;
+                  }
+
+                  final success = await data.addComment(
+                    post,
+                    text,
+                  );
+
+                  if (!dialogContext.mounted) return;
+
+                  if (success) {
+                    Navigator.pop(dialogContext);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          data.errorMessage ??
+                              'تعذر إرسال التعليق',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('إرسال'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -512,7 +600,9 @@ class PostCard extends StatelessWidget {
       child: Container(
         constraints: fullScreen
             ? const BoxConstraints.expand()
-            : const BoxConstraints(minHeight: 230),
+            : const BoxConstraints(
+                minHeight: 230,
+              ),
         padding: const EdgeInsets.all(18),
         child: Stack(
           children: [
@@ -534,7 +624,8 @@ class PostCard extends StatelessWidget {
               left: 16,
               bottom: fullScreen ? 30 : 16,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
@@ -552,7 +643,10 @@ class PostCard extends StatelessWidget {
                       ),
                       if (post.verified) ...[
                         const SizedBox(width: 5),
-                        const Icon(Icons.verified, size: 19),
+                        const Icon(
+                          Icons.verified,
+                          size: 19,
+                        ),
                       ],
                     ],
                   ),
@@ -568,24 +662,34 @@ class PostCard extends StatelessWidget {
                   Row(
                     children: [
                       IconButton(
-                        onPressed: () => data.like(post),
+                        onPressed: () {
+                          data.like(post);
+                        },
                         icon: Icon(
                           post.liked
                               ? Icons.favorite
                               : Icons.favorite_border,
-                          color: post.liked ? Colors.red : null,
+                          color: post.liked
+                              ? Colors.red
+                              : null,
                         ),
                       ),
                       Text('${post.likes}'),
                       const SizedBox(width: 12),
                       IconButton(
-                        onPressed: () => data.comment(post),
-                        icon: const Icon(Icons.mode_comment_outlined),
+                        onPressed: () {
+                          _showCommentDialog(context);
+                        },
+                        icon: const Icon(
+                          Icons.mode_comment_outlined,
+                        ),
                       ),
                       Text('${post.comments}'),
                       const SizedBox(width: 12),
                       IconButton(
-                        onPressed: () => data.save(post),
+                        onPressed: () {
+                          data.save(post);
+                        },
                         icon: Icon(
                           post.saved
                               ? Icons.bookmark
@@ -613,7 +717,9 @@ class ExplorePage extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'استكشاف',
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
       body: ListView(
@@ -641,24 +747,30 @@ class ExplorePage extends StatelessWidget {
             ['N News', 'nnews'],
           ].map(
             (user) => Card(
-              margin: const EdgeInsets.only(bottom: 9),
+              margin: const EdgeInsets.only(
+                bottom: 9,
+              ),
               child: ListTile(
                 leading: const CircleAvatar(
                   child: Icon(Icons.person),
                 ),
                 title: Text(user[0]),
                 subtitle: Text('@${user[1]}'),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UserProfilePage(
-                      name: user[0],
-                      username: user[1],
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserProfilePage(
+                        name: user[0],
+                        username: user[1],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
                 trailing: FilledButton(
-                  onPressed: () => data.follow(user[1]),
+                  onPressed: () {
+                    data.follow(user[1]);
+                  },
                   child: Text(
                     data.following.contains(user[1])
                         ? 'متابَع'
@@ -698,7 +810,9 @@ class _CreatePageState extends State<CreatePage> {
 
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اكتب شيئًا قبل النشر')),
+        const SnackBar(
+          content: Text('اكتب شيئًا قبل النشر'),
+        ),
       );
       return;
     }
@@ -715,7 +829,8 @@ class _CreatePageState extends State<CreatePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            data.errorMessage ?? 'تعذر نشر المنشور',
+            data.errorMessage ??
+                'تعذر نشر المنشور',
           ),
         ),
       );
@@ -730,7 +845,11 @@ class _CreatePageState extends State<CreatePage> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم نشر المنشور بنجاح')),
+      const SnackBar(
+        content: Text(
+          'تم نشر المنشور بنجاح',
+        ),
+      ),
     );
   }
 
@@ -739,7 +858,8 @@ class _CreatePageState extends State<CreatePage> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment:
+            CrossAxisAlignment.stretch,
         children: [
           const Text(
             'إنشاء منشور',
@@ -771,7 +891,8 @@ class _CreatePageState extends State<CreatePage> {
               maxLines: null,
               expands: true,
               maxLength: 2000,
-              textAlignVertical: TextAlignVertical.top,
+              textAlignVertical:
+                  TextAlignVertical.top,
               decoration: const InputDecoration(
                 hintText: 'ماذا تريد أن تشارك؟',
                 contentPadding: EdgeInsets.all(17),
@@ -821,7 +942,9 @@ class _CreatePageState extends State<CreatePage> {
             ],
             onChanged: (value) {
               if (value != null) {
-                setState(() => visibility = value);
+                setState(
+                  () => visibility = value,
+                );
               }
             },
           ),
@@ -849,13 +972,16 @@ class MessagesPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'الرسائل',
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
       body: AnimatedBuilder(
         animation: data,
         builder: (_, __) {
-          final conversations = data.sortedConversations();
+          final conversations =
+              data.sortedConversations();
 
           if (conversations.isEmpty) {
             return const Center(
@@ -871,7 +997,9 @@ class MessagesPage extends StatelessWidget {
                   : entry.value.last;
 
               return Card(
-                margin: const EdgeInsets.only(bottom: 10),
+                margin: const EdgeInsets.only(
+                  bottom: 10,
+                ),
                 child: ListTile(
                   leading: const CircleAvatar(
                     child: Icon(Icons.person),
@@ -880,16 +1008,20 @@ class MessagesPage extends StatelessWidget {
                   subtitle: Text(
                     last?.text ?? 'لا توجد رسائل',
                   ),
-                  trailing: const Icon(Icons.chevron_left),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        name: entry.key,
-                        username: entry.key,
-                      ),
-                    ),
+                  trailing: const Icon(
+                    Icons.chevron_left,
                   ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatPage(
+                          name: entry.key,
+                          username: entry.key,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
             }).toList(),
@@ -928,7 +1060,10 @@ class _ChatPageState extends State<ChatPage> {
 
     if (text.isEmpty) return;
 
-    await data.sendMessage(widget.username, text);
+    await data.sendMessage(
+      widget.username,
+      text,
+    );
 
     if (!mounted) return;
 
@@ -948,31 +1083,45 @@ class _ChatPageState extends State<ChatPage> {
               animation: data,
               builder: (_, __) {
                 final current =
-                    data.messages[widget.username] ?? [];
+                    data.messages[widget.username] ??
+                        [];
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(15),
                   itemCount: current.length,
                   itemBuilder: (_, i) {
                     final message = current[i];
+
                     final mine =
-                        message.sender == data.username;
+                        message.sender ==
+                            data.username;
 
                     return Align(
                       alignment: mine
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
+                        margin:
+                            const EdgeInsets.only(
+                          bottom: 8,
+                        ),
+                        padding:
+                            const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
                           color: mine
-                              ? const Color(0xFF006D91)
-                              : const Color(0xFF1B1E27),
-                          borderRadius: BorderRadius.circular(18),
+                              ? const Color(
+                                  0xFF006D91,
+                                )
+                              : const Color(
+                                  0xFF1B1E27,
+                                ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            18,
+                          ),
                         ),
                         child: Column(
                           crossAxisAlignment:
@@ -984,7 +1133,8 @@ class _ChatPageState extends State<ChatPage> {
                               message.time,
                               style: const TextStyle(
                                 fontSize: 10,
-                                color: Colors.white54,
+                                color:
+                                    Colors.white54,
                               ),
                             ),
                           ],
@@ -1004,9 +1154,11 @@ class _ChatPageState extends State<ChatPage> {
                   Expanded(
                     child: TextField(
                       controller: controller,
-                      textInputAction: TextInputAction.send,
+                      textInputAction:
+                          TextInputAction.send,
                       onSubmitted: (_) => send(),
-                      decoration: const InputDecoration(
+                      decoration:
+                          const InputDecoration(
                         hintText: 'اكتب رسالة...',
                       ),
                     ),
@@ -1034,20 +1186,26 @@ class ProfilePage extends StatelessWidget {
     return AnimatedBuilder(
       animation: data,
       builder: (_, __) {
-        final myPosts = data.postsOf(data.username);
+        final myPosts =
+            data.postsOf(data.username);
 
         return Scaffold(
           appBar: AppBar(
             title: Text('@${data.username}'),
             actions: [
               IconButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const NotificationsPage(),
-                  ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const NotificationsPage(),
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.notifications_outlined,
                 ),
-                icon: const Icon(Icons.notifications_outlined),
               ),
               IconButton(
                 onPressed: () async {
@@ -1058,7 +1216,8 @@ class ProfilePage extends StatelessWidget {
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const LoginPage(),
+                      builder: (_) =>
+                          const LoginPage(),
                     ),
                     (_) => false,
                   );
@@ -1074,7 +1233,10 @@ class ProfilePage extends StatelessWidget {
               const Center(
                 child: CircleAvatar(
                   radius: 48,
-                  child: Icon(Icons.person, size: 50),
+                  child: Icon(
+                    Icons.person,
+                    size: 50,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1108,7 +1270,8 @@ class ProfilePage extends StatelessWidget {
                     label: 'المتابعون',
                   ),
                   _ProfileStat(
-                    value: '${data.following.length}',
+                    value:
+                        '${data.following.length}',
                     label: 'يتابع',
                   ),
                 ],
@@ -1128,14 +1291,21 @@ class ProfilePage extends StatelessWidget {
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.all(40),
-                    child: Text('لم تنشر أي منشورات بعد'),
+                    child: Text(
+                      'لم تنشر أي منشورات بعد',
+                    ),
                   ),
                 )
               else
                 ...myPosts.map(
                   (post) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: PostCard(post: post),
+                    padding:
+                        const EdgeInsets.only(
+                      bottom: 12,
+                    ),
+                    child: PostCard(
+                      post: post,
+                    ),
                   ),
                 ),
             ],
@@ -1169,7 +1339,9 @@ class _ProfileStat extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           label,
-          style: const TextStyle(color: Colors.white60),
+          style: const TextStyle(
+            color: Colors.white60,
+          ),
         ),
       ],
     );
@@ -1191,7 +1363,9 @@ class UserProfilePage extends StatelessWidget {
     return AnimatedBuilder(
       animation: data,
       builder: (_, __) {
-        final userPosts = data.postsOf(username);
+        final userPosts =
+            data.postsOf(username);
+
         final isFollowing =
             data.following.contains(username);
 
@@ -1206,7 +1380,10 @@ class UserProfilePage extends StatelessWidget {
               const Center(
                 child: CircleAvatar(
                   radius: 48,
-                  child: Icon(Icons.person, size: 50),
+                  child: Icon(
+                    Icons.person,
+                    size: 50,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1227,9 +1404,13 @@ class UserProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: () => data.follow(username),
+                onPressed: () {
+                  data.follow(username);
+                },
                 child: Text(
-                  isFollowing ? 'إلغاء المتابعة' : 'متابعة',
+                  isFollowing
+                      ? 'إلغاء المتابعة'
+                      : 'متابعة',
                 ),
               ),
               const SizedBox(height: 24),
@@ -1247,14 +1428,21 @@ class UserProfilePage extends StatelessWidget {
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.all(40),
-                    child: Text('لا توجد منشورات'),
+                    child: Text(
+                      'لا توجد منشورات',
+                    ),
                   ),
                 )
               else
                 ...userPosts.map(
                   (post) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: PostCard(post: post),
+                    padding:
+                        const EdgeInsets.only(
+                      bottom: 12,
+                    ),
+                    child: PostCard(
+                      post: post,
+                    ),
                   ),
                 ),
             ],
@@ -1282,21 +1470,27 @@ class NotificationsPage extends StatelessWidget {
               child: Icon(Icons.favorite),
             ),
             title: Text('إعجاب جديد'),
-            subtitle: Text('أعجب شخص بمنشورك'),
+            subtitle: Text(
+              'أعجب شخص بمنشورك',
+            ),
           ),
           ListTile(
             leading: CircleAvatar(
               child: Icon(Icons.person_add),
             ),
             title: Text('متابع جديد'),
-            subtitle: Text('بدأ شخص بمتابعتك'),
+            subtitle: Text(
+              'بدأ شخص بمتابعتك',
+            ),
           ),
           ListTile(
             leading: CircleAvatar(
               child: Icon(Icons.comment),
             ),
             title: Text('تعليق جديد'),
-            subtitle: Text('تمت إضافة تعليق على منشورك'),
+            subtitle: Text(
+              'تمت إضافة تعليق على منشورك',
+            ),
           ),
         ],
       ),
