@@ -241,12 +241,6 @@ class NData extends ChangeNotifier {
     notifyListeners();
 
     try {
-      /*
-       * البحث في profiles قد يكون محميًا بواسطة RLS.
-       * لذلك نحاول البحث فقط إذا كان الوصول مسموحًا.
-       * وفي حال رفض الوصول نترك قاعدة البيانات تتحقق من
-       * القيد UNIQUE إن كان موجودًا.
-       */
       try {
         final existing = await supabase
             .from('profiles')
@@ -461,6 +455,34 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
+  // AUTHENTICATED USER
+  // =========================================================
+
+  void setAuthenticatedUser(User user) {
+    name = (
+      user.userMetadata?['name'] ??
+      'مستخدم N'
+    ).toString();
+
+    username = (
+      user.userMetadata?['username'] ??
+      'n_user'
+    ).toString();
+
+    email = user.email ?? '';
+
+    age = _toInt(
+      user.userMetadata?['age'],
+      fallback: 25,
+    );
+
+    loggedIn = true;
+    errorMessage = null;
+
+    notifyListeners();
+  }
+
+  // =========================================================
   // HELPERS
   // =========================================================
 
@@ -537,12 +559,6 @@ class NData extends ChangeNotifier {
     }
 
     try {
-      /*
-       * profiles أصبحت محمية.
-       *
-       * لكن المنشور يحتاج البيانات العامة للكاتب.
-       * نحاول الاستعلام من public_profiles أولًا.
-       */
       final rows = await supabase
           .from('posts')
           .select(
@@ -558,10 +574,6 @@ class NData extends ChangeNotifier {
       for (final row in rows) {
         final map = Map<String, dynamic>.from(row);
 
-        /*
-         * NPost يتوقع المفتاح profiles.
-         * ننقل public_profiles إلى profiles محليًا فقط.
-         */
         final publicProfile =
             _mapFromDynamic(map['public_profiles']);
 
@@ -614,11 +626,6 @@ class NData extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      /*
-       * في حال كانت علاقة FK الخاصة بـ public_profiles
-       * غير متاحة في PostgREST، نستخدم الاستعلام الأبسط
-       * ونحاول تحميل البيانات العامة بشكل منفصل.
-       */
       try {
         await _loadPostsFallback();
         return;
@@ -1015,10 +1022,14 @@ class NData extends ChangeNotifier {
     }
   }
 
+  // =========================================================
+  // COMMENT
+  // =========================================================
+
   Future<bool> comment(
-    NPost post,
-    String text,
-  ) {
+    NPost post, [
+    String text = '',
+  ]) {
     return addComment(post, text);
   }
 
@@ -1131,10 +1142,6 @@ class NData extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      /*
-       * fallback: نقرأ IDs ثم نحاول جلب usernames
-       * من public_profiles.
-       */
       try {
         final rows = await supabase
             .from('follows')
