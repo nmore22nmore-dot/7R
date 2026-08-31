@@ -55,4 +55,4 @@ repositories {
 
 rootProject.name = "N"
 
-include ":app"
+include(":app")
