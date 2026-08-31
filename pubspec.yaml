@@ -1,7 +1,6 @@
 name: n
 description: N social platform
 publish_to: "none"
-
 version: 2.0.0+1
 
 environment:
