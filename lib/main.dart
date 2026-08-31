@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'n_data.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -59,14 +61,6 @@ class NApp extends StatelessWidget {
           seedColor: const Color(0xFF00C8FF),
           brightness: Brightness.dark,
         ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF11141C),
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFF11141C),
@@ -83,187 +77,6 @@ class NApp extends StatelessWidget {
     );
   }
 }
-
-class NPost {
-  NPost({
-    required this.author,
-    required this.username,
-    required this.text,
-    this.likes = 0,
-    this.comments = 0,
-    this.verified = false,
-    this.adult = false,
-    this.visibility = 'عام',
-  });
-
-  final String author;
-  final String username;
-  final String text;
-  final bool verified;
-  final bool adult;
-  final String visibility;
-  int likes;
-  int comments;
-  bool liked = false;
-  bool saved = false;
-}
-
-class NMessage {
-  NMessage({
-    required this.sender,
-    required this.text,
-    required this.time,
-  });
-
-  final String sender;
-  final String text;
-  final String time;
-}
-
-class NData extends ChangeNotifier {
-  String name = 'مستخدم N';
-  String username = 'n_user';
-  String email = '';
-  int age = 25;
-  bool loggedIn = false;
-
-  final List<NPost> posts = [
-    NPost(
-      author: 'N Official',
-      username: 'n',
-      text: 'مرحباً بك في N 👋',
-      likes: 1240,
-      comments: 86,
-      verified: true,
-    ),
-    NPost(
-      author: 'N Official',
-      username: 'n',
-      text: 'شارك أفكارك وصورك وفيديوهاتك ولحظاتك مع مجتمع N.',
-      likes: 842,
-      comments: 41,
-      verified: true,
-    ),
-    NPost(
-      author: 'N News',
-      username: 'nnews',
-      text: 'اكتشف أحدث المحتوى الرائج في N الآن.',
-      likes: 521,
-      comments: 28,
-    ),
-  ];
-
-  final Set<String> following = <String>{};
-
-  final Map<String, List<NMessage>> messages = {
-    'ahmed': [
-      NMessage(sender: 'Ahmed', text: 'مرحباً 👋', time: '10:20'),
-    ],
-    'sara': [
-      NMessage(sender: 'Sara', text: 'أهلاً بك في N', time: '11:05'),
-    ],
-  };
-
-  bool get adultAllowed => age >= 21;
-
-  void setAuthenticatedUser({
-    required String newName,
-    required String newUsername,
-    required String newEmail,
-    required int newAge,
-  }) {
-    name = newName;
-    username = newUsername;
-    email = newEmail;
-    age = newAge;
-    loggedIn = true;
-    notifyListeners();
-  }
-
-  void createPost(
-    String text, {
-    bool adult = false,
-    String visibility = 'عام',
-  }) {
-    posts.insert(
-      0,
-      NPost(
-        author: name,
-        username: username,
-        text: text,
-        adult: adult,
-        visibility: visibility,
-      ),
-    );
-    notifyListeners();
-  }
-
-  void like(NPost post) {
-    post.liked = !post.liked;
-
-    if (post.liked) {
-      post.likes++;
-    } else if (post.likes > 0) {
-      post.likes--;
-    }
-
-    notifyListeners();
-  }
-
-  void comment(NPost post) {
-    post.comments++;
-    notifyListeners();
-  }
-
-  void save(NPost post) {
-    post.saved = !post.saved;
-    notifyListeners();
-  }
-
-  void follow(String user) {
-    if (following.contains(user)) {
-      following.remove(user);
-    } else {
-      following.add(user);
-    }
-
-    notifyListeners();
-  }
-
-  List<NPost> postsOf(String user) {
-    return posts.where((p) => p.username == user).toList();
-  }
-
-  List<NPost> visiblePosts() {
-    return posts.where((p) => !p.adult || adultAllowed).toList();
-  }
-
-  void sendMessage(String user, String text) {
-    final list = messages.putIfAbsent(user, () => []);
-
-    final now = TimeOfDay.now();
-    final hh = now.hour.toString().padLeft(2, '0');
-    final mm = now.minute.toString().padLeft(2, '0');
-
-    list.add(
-      NMessage(
-        sender: username,
-        text: text,
-        time: '$hh:$mm',
-      ),
-    );
-
-    notifyListeners();
-  }
-
-  Future<void> logout() async {
-    await Supabase.instance.client.auth.signOut();
-    loggedIn = false;
-    notifyListeners();
-  }
-}
-
-final NData data = NData();
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -296,13 +109,7 @@ class _LoginPageState extends State<LoginPage> {
     final now = DateTime.now();
     var age = now.year - date.year;
 
-    final birthday = DateTime(
-      now.year,
-      date.month,
-      date.day,
-    );
-
-    if (birthday.isAfter(now)) {
+    if (DateTime(now.year, date.month, date.day).isAfter(now)) {
       age--;
     }
 
@@ -325,43 +132,42 @@ class _LoginPageState extends State<LoginPage> {
 
   void message(String text) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-      ),
+      SnackBar(content: Text(text)),
     );
   }
 
   Future<void> submit() async {
-    final u = username.text
+    final cleanUsername = username.text
         .trim()
         .replaceFirst('@', '')
         .replaceAll(' ', '')
         .toLowerCase();
 
-    final emailValue = email.text.trim();
-    final passwordValue = password.text;
+    final cleanEmail = email.text.trim();
+    final cleanName = name.text.trim();
+    final cleanPassword = password.text;
 
-    if (register && name.text.trim().isEmpty) {
+    if (register && cleanName.isEmpty) {
       message('اكتب اسمك');
       return;
     }
 
-    if (u.length < 4) {
+    if (cleanUsername.length < 4) {
       message('اسم المستخدم يجب أن يحتوي على 4 أحرف على الأقل');
       return;
     }
 
-    if (!RegExp(r'^[a-zA-Z0-9_.]+$').hasMatch(u)) {
+    if (!RegExp(r'^[a-zA-Z0-9_.]+$').hasMatch(cleanUsername)) {
       message('استخدم الأحرف الإنجليزية والأرقام و _ و . فقط');
       return;
     }
 
-    if (!emailValue.contains('@')) {
+    if (!cleanEmail.contains('@')) {
       message('أدخل بريدًا إلكترونيًا صحيحًا');
       return;
     }
 
-    if (passwordValue.length < 6) {
+    if (cleanPassword.length < 6) {
       message('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
@@ -378,117 +184,82 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    setState(() {});
-
     try {
       final client = Supabase.instance.client;
 
       if (register) {
+        final existing = await client
+            .from('profiles')
+            .select('id')
+            .eq('username', cleanUsername)
+            .maybeSingle();
+
+        if (existing != null) {
+          message('اسم المستخدم مستخدم بالفعل');
+          return;
+        }
+
         final response = await client.auth.signUp(
-          email: emailValue,
-          password: passwordValue,
+          email: cleanEmail,
+          password: cleanPassword,
+          data: {
+            'name': cleanName,
+            'username': cleanUsername,
+            'age': age,
+          },
         );
 
         final user = response.user;
 
         if (user == null) {
-          message('تعذر إنشاء الحساب. حاول مرة أخرى.');
+          message('تعذر إنشاء الحساب');
           return;
         }
 
-        if (response.session != null) {
-          await client.from('profiles').insert({
-            'id': user.id,
-            'username': u,
-            'display_name': name.text.trim(),
-            'birth_date': birthDate!.toIso8601String().split('T').first,
-          });
-
-          data.setAuthenticatedUser(
-            newName: name.text.trim(),
-            newUsername: u,
-            newEmail: emailValue,
-            newAge: age,
+        if (response.session == null) {
+          message(
+            'تم إنشاء الحساب. تحقق من بريدك الإلكتروني ثم سجّل الدخول.',
           );
-
-          if (!mounted) return;
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const NHome(),
-            ),
-          );
-
+          setState(() => register = false);
           return;
         }
 
-        message(
-          'تم إنشاء الحساب. تحقق من بريدك الإلكتروني لتأكيد الحساب ثم سجّل الدخول.',
+        await data.loadCurrentUser();
+
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const NHome()),
         );
 
-        setState(() => register = false);
         return;
       }
 
-      final response = await client.auth.signInWithPassword(
-        email: emailValue,
-        password: passwordValue,
+      await client.auth.signInWithPassword(
+        email: cleanEmail,
+        password: cleanPassword,
       );
 
-      final user = response.user;
+      await data.loadCurrentUser();
 
-      if (user == null || response.session == null) {
-        message('تعذر تسجيل الدخول. تحقق من البريد وكلمة المرور.');
+      if (!data.loggedIn) {
+        message(data.errorMessage ?? 'تعذر تحميل الحساب');
         return;
       }
-
-      final profile = await client
-          .from('profiles')
-          .select('username, display_name, birth_date')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      final profileMap = profile as Map<String, dynamic>?;
-
-      final profileUsername =
-          (profileMap?['username'] as String?) ?? u;
-
-      final profileName =
-          (profileMap?['display_name'] as String?) ?? 'N User';
-
-      final birthDateValue =
-          profileMap?['birth_date'] as String?;
-
-      final profileAge = birthDateValue == null
-          ? 25
-          : ageFromBirth(
-              DateTime.parse(birthDateValue),
-            );
-
-      data.setAuthenticatedUser(
-        newName: profileName,
-        newUsername: profileUsername,
-        newEmail: user.email ?? emailValue,
-        newAge: profileAge,
-      );
 
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const NHome(),
-        ),
+        MaterialPageRoute(builder: (_) => const NHome()),
       );
     } on AuthException catch (e) {
       message(e.message);
     } on PostgrestException catch (e) {
-      message('خطأ في ملف الحساب: ${e.message}');
+      message('خطأ في قاعدة البيانات: ${e.message}');
     } catch (e) {
-      message(
-        'حدث خطأ أثناء ${register ? 'إنشاء الحساب' : 'تسجيل الدخول'}: $e',
-      );
+      message('حدث خطأ أثناء العملية');
     }
   }
 
@@ -500,9 +271,7 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 500,
-              ),
+              constraints: const BoxConstraints(maxWidth: 500),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -545,9 +314,7 @@ class _LoginPageState extends State<LoginPage> {
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'الاسم',
-                        prefixIcon: Icon(
-                          Icons.person_outline,
-                        ),
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -558,10 +325,8 @@ class _LoginPageState extends State<LoginPage> {
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'اسم المستخدم',
-                      prefixIcon: Icon(
-                        Icons.alternate_email,
-                      ),
                       hintText: 'username',
+                      prefixIcon: Icon(Icons.alternate_email),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -572,9 +337,7 @@ class _LoginPageState extends State<LoginPage> {
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'البريد الإلكتروني',
-                      prefixIcon: Icon(
-                        Icons.email_outlined,
-                      ),
+                      prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -582,13 +345,10 @@ class _LoginPageState extends State<LoginPage> {
                   TextField(
                     controller: password,
                     obscureText: hidden,
-                    textInputAction: TextInputAction.done,
                     onSubmitted: (_) => submit(),
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                      ),
+                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() => hidden = !hidden);
@@ -606,42 +366,26 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 14),
                     OutlinedButton.icon(
                       onPressed: chooseBirthDate,
-                      icon: const Icon(
-                        Icons.cake_outlined,
-                      ),
+                      icon: const Icon(Icons.cake_outlined),
                       label: Text(
                         birthDate == null
                             ? 'اختيار تاريخ الميلاد'
                             : 'تاريخ الميلاد: '
-                                '${birthDate!.day}/'
-                                '${birthDate!.month}/'
-                                '${birthDate!.year}',
+                              '${birthDate!.day}/'
+                              '${birthDate!.month}/'
+                              '${birthDate!.year}',
                       ),
                     ),
-                    if (birthDate != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'العمر: ${ageFromBirth(birthDate!)} سنة',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
                   ],
 
                   const SizedBox(height: 22),
 
                   FilledButton(
-                    onPressed: submit,
+                    onPressed: data.loading ? null : submit,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       child: Text(
-                        register
-                            ? 'إنشاء الحساب'
-                            : 'تسجيل الدخول',
+                        register ? 'إنشاء الحساب' : 'تسجيل الدخول',
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
@@ -654,26 +398,12 @@ class _LoginPageState extends State<LoginPage> {
 
                   TextButton(
                     onPressed: () {
-                      setState(() {
-                        register = !register;
-                      });
+                      setState(() => register = !register);
                     },
                     child: Text(
                       register
                           ? 'لديك حساب بالفعل؟ تسجيل الدخول'
                           : 'ليس لديك حساب؟ إنشاء حساب',
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    'باستخدام N أنت توافق على شروط الاستخدام '
-                    'وسياسة الخصوصية.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white54,
                     ),
                   ),
                 ],
@@ -753,14 +483,9 @@ class _NHomeState extends State<NHome> {
   }
 }
 
-class NVideoFeedPage extends StatefulWidget {
+class NVideoFeedPage extends StatelessWidget {
   const NVideoFeedPage({super.key});
 
-  @override
-  State<NVideoFeedPage> createState() => _NVideoFeedPageState();
-}
-
-class _NVideoFeedPageState extends State<NVideoFeedPage> {
   @override
   Widget build(BuildContext context) {
     final posts = data.visiblePosts();
@@ -777,7 +502,7 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
     return PageView.builder(
       scrollDirection: Axis.vertical,
       itemCount: posts.length,
-      itemBuilder: (context, index) {
+      itemBuilder: (_, index) {
         return PostCard(
           post: posts[index],
           fullScreen: true,
@@ -812,10 +537,10 @@ class PostCard extends StatelessWidget {
         child: Stack(
           children: [
             if (fullScreen)
-              Positioned.fill(
-                child: Container(
-                  color: const Color(0xFF0C0E14),
-                  child: const Center(
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0xFF0C0E14),
+                  child: Center(
                     child: Icon(
                       Icons.play_circle_outline,
                       size: 80,
@@ -847,10 +572,7 @@ class PostCard extends StatelessWidget {
                       ),
                       if (post.verified) ...[
                         const SizedBox(width: 5),
-                        const Icon(
-                          Icons.verified,
-                          size: 19,
-                        ),
+                        const Icon(Icons.verified, size: 19),
                       ],
                     ],
                   ),
@@ -871,18 +593,14 @@ class PostCard extends StatelessWidget {
                           post.liked
                               ? Icons.favorite
                               : Icons.favorite_border,
-                          color: post.liked
-                              ? Colors.red
-                              : null,
+                          color: post.liked ? Colors.red : null,
                         ),
                       ),
                       Text('${post.likes}'),
                       const SizedBox(width: 12),
                       IconButton(
                         onPressed: () => data.comment(post),
-                        icon: const Icon(
-                          Icons.mode_comment_outlined,
-                        ),
+                        icon: const Icon(Icons.mode_comment_outlined),
                       ),
                       Text('${post.comments}'),
                       const SizedBox(width: 12),
@@ -911,33 +629,20 @@ class ExplorePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const users = [
-      ['Ahmed', 'ahmed'],
-      ['Sara', 'sara'],
-      ['N Official', 'n'],
-      ['N News', 'nnews'],
-    ];
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'استكشاف',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          TextField(
+          const TextField(
             decoration: InputDecoration(
               hintText: 'بحث في N',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.tune),
-              ),
+              prefixIcon: Icon(Icons.search),
             ),
           ),
           const SizedBox(height: 22),
@@ -949,7 +654,12 @@ class ExplorePage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          ...users.map(
+          ...[
+            ['Ahmed', 'ahmed'],
+            ['Sara', 'sara'],
+            ['N Official', 'n'],
+            ['N News', 'nnews'],
+          ].map(
             (user) => Card(
               margin: const EdgeInsets.only(bottom: 9),
               child: ListTile(
@@ -978,31 +688,6 @@ class ExplorePage extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 22),
-          const Text(
-            'الرائج الآن',
-            style: TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          ...List.generate(
-            7,
-            (i) => ListTile(
-              leading: Text(
-                '${i + 1}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              title: Text('#موضوع_رائج_${i + 1}'),
-              subtitle: Text('${2500 + i * 731} منشور'),
-              trailing: const Icon(
-                Icons.trending_up,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1028,45 +713,44 @@ class _CreatePageState extends State<CreatePage> {
     super.dispose();
   }
 
-  void publish() {
+  Future<void> publish() async {
     final text = controller.text.trim();
 
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('اكتب شيئًا قبل النشر'),
-        ),
+        const SnackBar(content: Text('اكتب شيئًا قبل النشر')),
       );
       return;
     }
 
-    if (adult && !data.adultAllowed) {
+    final success = await data.createPost(
+      text,
+      adult: adult,
+      visibility: visibility,
+    );
+
+    if (!mounted) return;
+
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'محتوى +21 متاح للحسابات بعمر 21 سنة فأكثر',
+            data.errorMessage ?? 'تعذر نشر المنشور',
           ),
         ),
       );
       return;
     }
 
-    data.createPost(
-      text,
-      adult: adult,
-      visibility: visibility,
-    );
-
     controller.clear();
 
     setState(() {
       adult = false;
+      visibility = 'عام';
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم نشر المنشور بنجاح'),
-      ),
+      const SnackBar(content: Text('تم نشر المنشور بنجاح')),
     );
   }
 
@@ -1106,51 +790,13 @@ class _CreatePageState extends State<CreatePage> {
               controller: controller,
               maxLines: null,
               expands: true,
-              textAlignVertical: TextAlignVertical.top,
               maxLength: 2000,
+              textAlignVertical: TextAlignVertical.top,
               decoration: const InputDecoration(
                 hintText: 'ماذا تريد أن تشارك؟',
                 contentPadding: EdgeInsets.all(17),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'اختيار الصورة جاهز للربط مع التخزين',
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.image_outlined,
-                  ),
-                  label: const Text('صورة'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'اختيار الفيديو جاهز للربط مع التخزين',
-                      ),
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.videocam_outlined,
-                  ),
-                  label: const Text('فيديو'),
-                ),
-              ),
-            ],
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -1201,108 +847,11 @@ class _CreatePageState extends State<CreatePage> {
           ),
           const SizedBox(height: 10),
           FilledButton.icon(
-            onPressed: publish,
+            onPressed: data.loading ? null : publish,
             icon: const Icon(Icons.send),
             label: const Padding(
               padding: EdgeInsets.all(13),
               child: Text('نشر'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class LivePage extends StatelessWidget {
-  const LivePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('البث المباشر'),
-      ),
-      body: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF171A2A),
-                  Color(0xFF05060A),
-                ],
-              ),
-            ),
-            child: const Center(
-              child: Icon(
-                Icons.play_circle_fill,
-                size: 90,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 15,
-            top: 15,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 7,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.red,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text('● LIVE'),
-            ),
-          ),
-          const Positioned(
-            right: 15,
-            bottom: 20,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'N Official',
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text('مرحباً بالجميع في البث المباشر'),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 15,
-            bottom: 110,
-            child: Column(
-              children: [
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(
-                    Icons.favorite,
-                    color: Colors.red,
-                    size: 35,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(
-                    Icons.card_giftcard,
-                    size: 35,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(
-                    Icons.share,
-                    size: 32,
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -1316,50 +865,56 @@ class MessagesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const users = [
-      ['Ahmed', 'ahmed'],
-      ['Sara', 'sara'],
-    ];
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'الرسائل',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: users
-            .map(
-              (user) => Card(
+      body: AnimatedBuilder(
+        animation: data,
+        builder: (_, __) {
+          final conversations = data.sortedConversations();
+
+          if (conversations.isEmpty) {
+            return const Center(
+              child: Text('لا توجد محادثات'),
+            );
+          }
+
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: conversations.map((entry) {
+              final last = entry.value.isEmpty
+                  ? null
+                  : entry.value.last;
+
+              return Card(
                 margin: const EdgeInsets.only(bottom: 10),
                 child: ListTile(
                   leading: const CircleAvatar(
                     child: Icon(Icons.person),
                   ),
-                  title: Text(user[0]),
-                  subtitle: const Text(
-                    'اضغط لفتح المحادثة',
+                  title: Text('@${entry.key}'),
+                  subtitle: Text(
+                    last?.text ?? 'لا توجد رسائل',
                   ),
-                  trailing: const Icon(
-                    Icons.chevron_left,
-                  ),
+                  trailing: const Icon(Icons.chevron_left),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => ChatPage(
-                        name: user[0],
-                        username: user[1],
+                        name: entry.key,
+                        username: entry.key,
                       ),
                     ),
                   ),
                 ),
-              ),
-            )
-            .toList(),
+              );
+            }).toList(),
+          );
+        },
       ),
     );
   }
@@ -1388,15 +943,14 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
-  void send() {
+  Future<void> send() async {
     final text = controller.text.trim();
 
     if (text.isEmpty) return;
 
-    data.sendMessage(
-      widget.username,
-      text,
-    );
+    await data.sendMessage(widget.username, text);
+
+    if (!mounted) return;
 
     controller.clear();
   }
@@ -1405,16 +959,7 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              child: Icon(Icons.person),
-            ),
-            const SizedBox(width: 10),
-            Text(widget.name),
-          ],
-        ),
+        title: Text(widget.name),
       ),
       body: Column(
         children: [
@@ -1438,9 +983,7 @@ class _ChatPageState extends State<ChatPage> {
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 8,
-                        ),
+                        margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -1449,8 +992,7 @@ class _ChatPageState extends State<ChatPage> {
                           color: mine
                               ? const Color(0xFF006D91)
                               : const Color(0xFF1B1E27),
-                          borderRadius:
-                              BorderRadius.circular(18),
+                          borderRadius: BorderRadius.circular(18),
                         ),
                         child: Column(
                           crossAxisAlignment:
@@ -1482,8 +1024,7 @@ class _ChatPageState extends State<ChatPage> {
                   Expanded(
                     child: TextField(
                       controller: controller,
-                      textInputAction:
-                          TextInputAction.send,
+                      textInputAction: TextInputAction.send,
                       onSubmitted: (_) => send(),
                       decoration: const InputDecoration(
                         hintText: 'اكتب رسالة...',
@@ -1505,111 +1046,55 @@ class _ChatPageState extends State<ChatPage> {
   }
 }
 
-class NotificationsPage extends StatelessWidget {
-  const NotificationsPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'الإشعارات',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: const [
-          ListTile(
-            leading: CircleAvatar(
-              child: Icon(Icons.favorite),
-            ),
-            title: Text('إعجاب جديد'),
-            subtitle: Text('أعجب شخص بمنشورك'),
-          ),
-          ListTile(
-            leading: CircleAvatar(
-              child: Icon(Icons.person_add),
-            ),
-            title: Text('متابع جديد'),
-            subtitle: Text('بدأ شخص بمتابعتك'),
-          ),
-          ListTile(
-            leading: CircleAvatar(
-              child: Icon(Icons.comment),
-            ),
-            title: Text('تعليق جديد'),
-            subtitle: Text('تمت إضافة تعليق على منشورك'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final myPosts = data.postsOf(data.username);
+    return AnimatedBuilder(
+      animation: data,
+      builder: (_, __) {
+        final myPosts = data.postsOf(data.username);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '@${data.username}',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationsPage(),
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('@${data.username}'),
+            actions: [
+              IconButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationsPage(),
+                  ),
                 ),
-              );
-            },
-            icon: const Icon(
-              Icons.notifications_outlined,
-            ),
-          ),
-          IconButton(
-            onPressed: () async {
-              await data.logout();
+                icon: const Icon(Icons.notifications_outlined),
+              ),
+              IconButton(
+                onPressed: () async {
+                  await data.logout();
 
-              if (!context.mounted) return;
+                  if (!context.mounted) return;
 
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const LoginPage(),
-                ),
-                (_) => false,
-              );
-            },
-            icon: const Icon(Icons.logout),
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LoginPage(),
+                    ),
+                    (_) => false,
+                  );
+                },
+                icon: const Icon(Icons.logout),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: AnimatedBuilder(
-        animation: data,
-        builder: (_, __) {
-          return ListView(
+          body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               const SizedBox(height: 10),
               const Center(
                 child: CircleAvatar(
                   radius: 48,
-                  child: Icon(
-                    Icons.person,
-                    size: 50,
-                  ),
+                  child: Icon(Icons.person, size: 50),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1627,7 +1112,6 @@ class ProfilePage extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white60,
-                  fontSize: 15,
                 ),
               ),
               const SizedBox(height: 18),
@@ -1661,32 +1145,23 @@ class ProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               if (myPosts.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(
-                    vertical: 40,
-                  ),
-                  child: Center(
-                    child: Text(
-                      'لم تنشر أي منشورات بعد',
-                      style: TextStyle(
-                        color: Colors.white60,
-                      ),
-                    ),
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Text('لم تنشر أي منشورات بعد'),
                   ),
                 )
               else
                 ...myPosts.map(
                   (post) => Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: 12,
-                    ),
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: PostCard(post: post),
                   ),
                 ),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1714,9 +1189,7 @@ class _ProfileStat extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white60,
-          ),
+          style: const TextStyle(color: Colors.white60),
         ),
       ],
     );
@@ -1735,33 +1208,25 @@ class UserProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final userPosts = data.postsOf(username);
-    final isFollowing =
-        data.following.contains(username);
+    return AnimatedBuilder(
+      animation: data,
+      builder: (_, __) {
+        final userPosts = data.postsOf(username);
+        final isFollowing =
+            data.following.contains(username);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '@$username',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('@$username'),
           ),
-        ),
-      ),
-      body: AnimatedBuilder(
-        animation: data,
-        builder: (_, __) {
-          return ListView(
+          body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               const SizedBox(height: 10),
               const Center(
                 child: CircleAvatar(
                   radius: 48,
-                  child: Icon(
-                    Icons.person,
-                    size: 50,
-                  ),
+                  child: Icon(Icons.person, size: 50),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1773,7 +1238,6 @@ class UserProfilePage extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 4),
               Text(
                 '@$username',
                 textAlign: TextAlign.center,
@@ -1785,9 +1249,7 @@ class UserProfilePage extends StatelessWidget {
               FilledButton(
                 onPressed: () => data.follow(username),
                 child: Text(
-                  isFollowing
-                      ? 'إلغاء المتابعة'
-                      : 'متابعة',
+                  isFollowing ? 'إلغاء المتابعة' : 'متابعة',
                 ),
               ),
               const SizedBox(height: 24),
@@ -1802,31 +1264,61 @@ class UserProfilePage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               if (userPosts.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(
-                    vertical: 40,
-                  ),
-                  child: Center(
-                    child: Text(
-                      'لا توجد منشورات',
-                      style: TextStyle(
-                        color: Colors.white60,
-                      ),
-                    ),
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Text('لا توجد منشورات'),
                   ),
                 )
               else
                 ...userPosts.map(
                   (post) => Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: 12,
-                    ),
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: PostCard(post: post),
                   ),
                 ),
             ],
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class NotificationsPage extends StatelessWidget {
+  const NotificationsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('الإشعارات'),
+      ),
+      body: const ListView(
+        padding: EdgeInsets.all(12),
+        children: [
+          ListTile(
+            leading: CircleAvatar(
+              child: Icon(Icons.favorite),
+            ),
+            title: Text('إعجاب جديد'),
+            subtitle: Text('أعجب شخص بمنشورك'),
+          ),
+          ListTile(
+            leading: CircleAvatar(
+              child: Icon(Icons.person_add),
+            ),
+            title: Text('متابع جديد'),
+            subtitle: Text('بدأ شخص بمتابعتك'),
+          ),
+          ListTile(
+            leading: CircleAvatar(
+              child: Icon(Icons.comment),
+            ),
+            title: Text('تعليق جديد'),
+            subtitle: Text('تمت إضافة تعليق على منشورك'),
+          ),
+        ],
       ),
     );
   }
