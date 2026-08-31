@@ -749,6 +749,13 @@ class NData extends ChangeNotifier {
     }
   }
 
+  Future<bool> comment(
+    NPost post,
+    String text,
+  ) {
+    return addComment(post, text);
+  }
+
   Future<bool> _isSaved(String postId) async {
     if (userId == null) return false;
 
@@ -1024,17 +1031,6 @@ class NData extends ChangeNotifier {
     }
 
     try {
-      /*
-       * إنشاء المحادثة يتم عبر PostgreSQL RPC
-       * بدلاً من الإدخال المباشر في:
-       *
-       * conversations
-       * conversation_members
-       *
-       * وذلك حتى تعمل قواعد RLS الأمنية
-       * وتمنع إضافة مستخدم نفسه إلى محادثة
-       * لا تخصه.
-       */
       final result = await supabase.rpc(
         'create_conversation',
         params: {
@@ -1048,10 +1044,6 @@ class NData extends ChangeNotifier {
         return null;
       }
 
-      /*
-       * الدالة يمكن أن تعيد UUID مباشرة،
-       * أو كائنًا يحتوي على id.
-       */
       if (result is String) {
         final id = result.trim();
 
@@ -1102,10 +1094,6 @@ class NData extends ChangeNotifier {
         }
       }
 
-      /*
-       * في حال كانت الدالة لا تعيد UUID،
-       * نحاول العثور على المحادثة بعد إنشائها.
-       */
       final conversation =
           await _getConversationId(
         otherUserId,
