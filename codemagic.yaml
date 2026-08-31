@@ -7,6 +7,10 @@ workflows:
     environment:
       flutter: stable
       java: 17
+
+      android_signing:
+        - n_android_keystore
+
       groups:
         - N_SUPABASE
 
