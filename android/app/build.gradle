@@ -4,6 +4,11 @@ id "org.jetbrains.kotlin.android"
 id "dev.flutter.flutter-gradle-plugin"
 }
 
+def keystoreFile = System.getenv("N_KEYSTORE_FILE")
+def keystorePassword = System.getenv("N_KEYSTORE_PASSWORD")
+def keyAliasValue = System.getenv("N_KEY_ALIAS")
+def keyPasswordValue = System.getenv("N_KEY_PASSWORD")
+
 android {
 namespace = "com.n.app"
 compileSdk = 36
@@ -16,9 +21,29 @@ defaultConfig {
     versionName = "2.0.0"
 }
 
+signingConfigs {
+    release {
+        if (keystoreFile != null && !keystoreFile.isEmpty()) {
+            storeFile file(keystoreFile)
+        }
+
+        if (keystorePassword != null) {
+            storePassword keystorePassword
+        }
+
+        if (keyAliasValue != null) {
+            keyAlias keyAliasValue
+        }
+
+        if (keyPasswordValue != null) {
+            keyPassword keyPasswordValue
+        }
+    }
+}
+
 buildTypes {
     release {
-        signingConfig = signingConfigs.debug
+        signingConfig signingConfigs.release
     }
 }
 
