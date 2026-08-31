@@ -10,8 +10,15 @@ environment:
   groups:
     - N_SUPABASE
 
+triggering:
+  events:
+    - push
+  branch_patterns:
+    - pattern: main
+      include: true
+
 scripts:
-  - name: Set Flutter Android configuration
+  - name: Configure Flutter Android
     script: |
       echo "flutter.sdk=$FLUTTER_ROOT" > "$CM_BUILD_DIR/android/local.properties"
 
