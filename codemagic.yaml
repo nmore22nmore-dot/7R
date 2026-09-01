@@ -8,6 +8,9 @@ workflows:
       flutter: stable
       java: 17
 
+      vars:
+        CM_KEYSTORE_PATH: "$CM_BUILD_DIR/android/app/n-release.p12"
+
       groups:
         - N_SUPABASE
         - keystore_credentials
