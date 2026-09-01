@@ -18,14 +18,11 @@ android {
 
     signingConfigs {
         release {
-            /*
-             * Codemagic يضع بيانات التوقيع تلقائيًا
-             * في متغيرات CM_* عند استخدام android_signing.
-             */
-            if (System.getenv()["CI"]) {
+            if (System.getenv("CI")) {
                 storeFile file(
-                    System.getenv()["CM_KEYSTORE_PATH"]
+                    System.getenv("CM_KEYSTORE_PATH")
                 )
+                storeType "PKCS12"
                 storePassword System.getenv(
                     "CM_KEYSTORE_PASSWORD"
                 )
