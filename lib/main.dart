@@ -1660,5 +1660,3 @@ class NotificationsPage extends StatelessWidget {
   }
 }
 
-Commit message:
-"fix: update main.dart to match current NData API"
