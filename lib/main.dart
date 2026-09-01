@@ -1061,7 +1061,7 @@ class _CreatePageState extends State<CreatePage> {
             },
           ),
           DropdownButtonFormField<String>(
-            value: visibility,
+           initialValue: visibility, 
             decoration: const InputDecoration(
               labelText: 'الخصوصية',
             ),
