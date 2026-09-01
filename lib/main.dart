@@ -615,9 +615,11 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
                 controller: _pageController,
                 scrollDirection: Axis.vertical,
                 itemCount: posts.length,
-                onPageChanged: (index) => setState(() => _currentIndex = index),
+                onPageChanged: (index) =>
+                    setState(() => _currentIndex = index),
                 itemBuilder: (context, index) {
                   final distance = (index - _currentIndex).abs();
+
                   return ShortVideoCard(
                     key: ValueKey(posts[index].id),
                     post: posts[index],
@@ -641,6 +643,7 @@ class _NHomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
+
     return Positioned(
       top: top + 6,
       left: 12,
@@ -651,36 +654,70 @@ class _NHomeHeader extends StatelessWidget {
           const SizedBox(width: 18),
           IconButton(
             onPressed: () {},
-            icon: const Icon(Icons.search_rounded, color: Colors.white, size: 29),
+            icon: const Icon(
+              Icons.search_rounded,
+              color: Colors.white,
+              size: 29,
+            ),
             tooltip: 'بحث',
           ),
           IconButton(
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const NInboxPage(initialTab: 0)),
+              MaterialPageRoute(
+                builder: (_) =>
+                    const NInboxPage(initialTab: 0),
+              ),
             ),
-            icon: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 27),
+            icon: const Icon(
+              Icons.notifications_none_rounded,
+              color: Colors.white,
+              size: 27,
+            ),
             tooltip: 'التواصل',
           ),
           const Spacer(),
-          _NTopTab(label: 'متابعة', active: false),
+          _NTopTab(
+            label: 'متابعة',
+            active: false,
+          ),
           const SizedBox(width: 24),
-          _NTopTab(label: 'لك', active: true),
+          _NTopTab(
+            label: 'لك',
+            active: true,
+          ),
           const SizedBox(width: 14),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 6,
+            ),
             decoration: BoxDecoration(
               color: Colors.black54,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(
+                color: Colors.white12,
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.monetization_on_outlined, color: Color(0xFFFFC928), size: 18),
+                const Icon(
+                  Icons.monetization_on_outlined,
+                  color: Color(0xFFFFC928),
+                  size: 18,
+                ),
                 const SizedBox(width: 4),
-                Text('${data.coins}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  '${data.coins}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
                 const SizedBox(width: 5),
-                const Icon(Icons.add_circle_outline, size: 18),
+                const Icon(
+                  Icons.add_circle_outline,
+                  size: 18,
+                ),
               ],
             ),
           ),
@@ -691,34 +728,27 @@ class _NHomeHeader extends StatelessWidget {
 }
 
 class _NTopTab extends StatelessWidget {
-  const _NTopTab({required this.label, required this.active});
+  const _NTopTab({
+    required this.label,
+    required this.active,
+  });
+
   final String label;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: active ? Colors.white : Colors.white60,
-            fontSize: 16,
-            fontWeight: active ? FontWeight.w900 : FontWeight.w600,
-          ),
+    return Column(    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: active ? Colors.white : Colors.white70,
+          fontSize: 15,
+          fontWeight:
+              active ? FontWeight.w800 : FontWeight.w500,
         ),
-        const SizedBox(height: 5),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: active ? 32 : 0,
-          height: 2.5,
-          decoration: BoxDecoration(
-            color: NColors.pink,
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -739,822 +769,556 @@ class ShortVideoCard extends StatefulWidget {
   State<ShortVideoCard> createState() => _ShortVideoCardState();
 }
 
-class _ShortVideoCardState extends State<ShortVideoCard> {
+class _ShortVideoCardState extends State<ShortVideoCard>
+    with WidgetsBindingObserver {
   VideoPlayerController? _controller;
-  bool _loading = true;
-  bool _muted = false;
-  bool _preparing = false;
+  Future<void>? _initializeFuture;
+
+  bool _muted = true;
+  bool _liked = false;
+  bool _saved = false;
+  bool _loadingAction = false;
+
+  int _likes = 0;
+  int _comments = 0;
 
   @override
   void initState() {
     super.initState();
-    if (widget.preload) unawaited(_prepare());
+    WidgetsBinding.instance.addObserver(this);
+
+    _likes = widget.post.likes;
+    _comments = widget.post.comments;
+    _liked = data.isPostLiked(widget.post.id);
+    _saved = data.isPostSaved(widget.post.id);
+
+    if (widget.active || widget.preload) {
+      _prepareVideo();
+    }
   }
 
   @override
   void didUpdateWidget(covariant ShortVideoCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.post.videoUrl != widget.post.videoUrl) {
+
+    if (oldWidget.post.id != widget.post.id) {
       _disposeController();
-      if (widget.preload) unawaited(_prepare());
-      return;
-    }
-    if (!oldWidget.preload && widget.preload) {
-      unawaited(_prepare());
-    } else if (oldWidget.preload && !widget.preload) {
-      _disposeController();
-    }
-    _syncPlayback();
-  }
 
-  Future<void> _prepare() async {
-    if (_preparing || _controller != null || !widget.preload) return;
-    _preparing = true;
-    final url = widget.post.videoUrl?.trim();
-    if (url == null || url.isEmpty) {
-      if (mounted) setState(() => _loading = false);
-      _preparing = false;
-      return;
+      _likes = widget.post.likes;
+      _comments = widget.post.comments;
+      _liked = data.isPostLiked(widget.post.id);
+      _saved = data.isPostSaved(widget.post.id);
     }
 
-    try {
-      final controller = VideoPlayerController.networkUrl(
-        Uri.parse(url),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
-      await controller.initialize();
-      await controller.setLooping(true);
-      controller.setVolume(_muted ? 0 : 1);
-      _controller = controller;
-      unawaited(data.registerView(widget.post));
-      if (mounted) {
-        setState(() => _loading = false);
-        _syncPlayback();
-      }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    } finally {
-      _preparing = false;
+    if (widget.active || widget.preload) {
+      _prepareVideo();
     }
-  }
 
-  void _syncPlayback() {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
     if (widget.active) {
-      unawaited(controller.play());
+      _controller?.play();
     } else {
-      unawaited(controller.pause());
+      _controller?.pause();
+    }
+  }
+
+  Future<void> _prepareVideo() async {
+    if (_controller != null ||
+        _initializeFuture != null ||
+        widget.post.videoUrl.trim().isEmpty) {
+      return;
+    }
+
+    final url = widget.post.videoUrl.trim();
+
+    final controller = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+    );
+
+    _controller = controller;
+
+    _initializeFuture = controller.initialize().then((_) {
+      controller
+        ..setLooping(true)
+        ..setVolume(_muted ? 0 : 1);
+
+      if (widget.active) {
+        controller.play();
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+    }).catchError((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
+    if (mounted) {
+      setState(() {});
     }
   }
 
   void _disposeController() {
     final controller = _controller;
+
     _controller = null;
-    if (controller != null) unawaited(controller.dispose());
+    _initializeFuture = null;
+
+    if (controller != null) {
+      unawaited(controller.dispose());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(
+    AppLifecycleState state,
+  ) {
+    if (_controller == null) return;
+
+    if (state == AppLifecycleState.resumed) {
+      if (widget.active) {
+        _controller!.play();
+      }
+    } else {
+      _controller!.pause();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposeController();
     super.dispose();
   }
 
-  Future<void> _togglePlay() async {
-    final controller = _controller;
-    if (controller == null) return;
-    if (controller.value.isPlaying) {
-      await controller.pause();
-    } else {
-      await controller.play();
-    }
-    if (mounted) setState(() {});
-  }
+  Future<void> _toggleLike() async {
+    if (_loadingAction) return;
 
-  Future<void> _toggleMute() async {
-    final controller = _controller;
-    if (controller == null) return;
-    _muted = !_muted;
-    await controller.setVolume(_muted ? 0 : 1);
-    if (mounted) setState(() {});
-  }
+    setState(() {
+      _loadingAction = true;
+    });
 
-  Future<void> _comment() async {
-    final controller = TextEditingController();
     try {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: const Color(0xFF111318),
-        builder: (sheetContext) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.of(sheetContext).viewInsets.bottom + 18),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    autofocus: true,
-                    maxLength: 1000,
-                    decoration: const InputDecoration(hintText: 'اكتب تعليقك...'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: () async {
-                    final ok = await data.addComment(widget.post, controller.text);
-                    if (!sheetContext.mounted) return;
-                    if (ok) Navigator.pop(sheetContext);
-                  },
-                  icon: const Icon(Icons.send),
-                ),
-              ],
-            ),
-          );
-        },
-      );
+      final liked = await data.toggleLike(widget.post.id);
+
+      if (!mounted) return;
+
+      setState(() {
+        _liked = liked;
+        _likes = liked
+            ? _likes + 1
+            : (_likes > 0 ? _likes - 1 : 0);
+      });
     } finally {
-      controller.dispose();
+      if (mounted) {
+        setState(() {
+          _loadingAction = false;
+        });
+      }
     }
+  }
+
+  Future<void> _toggleSave() async {
+    if (_loadingAction) return;
+
+    setState(() {
+      _loadingAction = true;
+    });
+
+    try {
+      final saved = await data.toggleSave(widget.post.id);
+
+      if (!mounted) return;
+
+      setState(() {
+        _saved = saved;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingAction = false;
+        });
+      }
+    }
+  }
+
+  void _toggleMute() {
+    setState(() {
+      _muted = !_muted;
+      _controller?.setVolume(_muted ? 0 : 1);
+    });
   }
 
   Future<void> _share() async {
-    final url = widget.post.videoUrl?.trim();
-    final text = url == null || url.isEmpty ? 'شاهد هذا المنشور على N' : 'شاهد هذا الفيديو على N\n$url';
-    await Share.share(text);    
+    final url = widget.post.videoUrl.trim();
+
+    final text = url.isEmpty
+        ? 'شاهد هذا المنشور على N'
+        : 'شاهد هذا الفيديو على N\n$url';
+
+    await Share.share(text);
+  }
+
+  Future<void> _openComments() async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: NColors.surface,
+      builder: (_) => CommentsSheet(
+        post: widget.post,
+      ),
+    );
+
+    if (result == true && mounted) {
+      setState(() {
+        _comments = data.commentsFor(widget.post.id).length;
+      });
+    }
+  }
+
+  void _openProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfilePage(
+          username: widget.post.username,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    final initialized = controller?.value.isInitialized == true;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        GestureDetector(
-          onTap: _togglePlay,
-          onDoubleTap: () => unawaited(data.like(widget.post)),
-          child: Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: _toggleLike,
+      onTap: _toggleMute,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
             color: Colors.black,
-            child: initialized
-                ? FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: controller!.value.size.width,
-                      height: controller.value.size.height,
-                      child: VideoPlayer(controller),
-                    ),
-                  )
-                : widget.post.imageUrl?.trim().isNotEmpty == true
-                    ? Image.network(widget.post.imageUrl!, fit: BoxFit.cover)
-                    : const Center(child: Icon(Icons.play_circle_outline, size: 86, color: Colors.white38)),
+            child: _buildVideo(controller),
           ),
-        ),
-        if (_loading)
-          const Center(child: CircularProgressIndicator()),
-        const Positioned.fill(
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.transparent, Color(0xD9000000)],
-                  stops: [0, .55, 1],
+          _buildGradient(),
+          _buildTopControls(),
+          _buildRightActions(),
+          _buildBottomInfo(),
+          if (_loadingAction)
+            const Positioned(
+              top: 110,
+              right: 20,
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVideo(
+    VideoPlayerController? controller,
+  ) {
+    if (controller == null) {
+      return _buildCover();
+    }
+
+    return FutureBuilder<void>(
+      future: _initializeFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState !=
+            ConnectionState.done) {
+          return _buildCover();
+        }
+
+        if (!controller.value.isInitialized) {
+          return _buildCover();
+        }
+
+        return Center(
+          child: AspectRatio(
+            aspectRatio: controller.value.aspectRatio,
+            child: VideoPlayer(controller),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCover() {
+    final cover = widget.post.coverUrl.trim();
+
+    if (cover.isEmpty) {
+      return const Center(
+        child: Icon(
+          Icons.play_circle_outline,
+          size: 64,
+          color: Colors.white54,
         ),
-        Positioned(
-          right: 12,
-          bottom: 120,
-          child: Column(
-            children: [
-              _VideoAction(
-                icon: widget.post.liked ? Icons.favorite : Icons.favorite_border,
-                value: widget.post.likes,
-                active: widget.post.liked,
-                onTap: () => unawaited(data.like(widget.post)),
-              ),
-              _VideoAction(
-                icon: Icons.mode_comment_outlined,
-                value: widget.post.comments,
-                onTap: _comment,
-              ),
-              _VideoAction(
-                icon: widget.post.saved ? Icons.bookmark : Icons.bookmark_border,
-                value: null,
-                active: widget.post.saved,
-                onTap: () => unawaited(data.save(widget.post)),
-              ),
-              _VideoAction(
-                icon: Icons.share_outlined,
-                value: null,
-                onTap: _share,
-              ),
-              const SizedBox(height: 6),
-              IconButton(
-                onPressed: _toggleMute,
-                style: IconButton.styleFrom(backgroundColor: Colors.black45),
-                icon: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white),
-              ),
+      );
+    }
+
+    return Image.network(
+      cover,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) {
+        return const Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            size: 50,
+            color: Colors.white54,
+          ),
+        );
+      },
+      loadingBuilder: (
+        context,
+        child,
+        loadingProgress,
+      ) {
+        if (loadingProgress == null) {
+          return child;
+        }
+
+        return const Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGradient() {
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withOpacity(.20),
+              Colors.transparent,
+              Colors.black.withOpacity(.72),
+            ],
+            stops: const [
+              0,
+              .42,
+              1,
             ],
           ),
         ),
-        Positioned(
-          left: 16,
-          right: 82,
-          bottom: 28,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const CircleAvatar(radius: 22, child: Icon(Icons.person)),
-                  const SizedBox(width: 9),
-                  Flexible(
-                    child: Text(
-                      '@${widget.post.username}',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                    ),
+      ),
+    );
+  }
+
+  Widget _buildTopControls() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 70,
+      left: 12,
+      right: 12,
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _toggleMute,
+            icon: Icon(
+              _muted
+                  ? Icons.volume_off_rounded
+                  : Icons.volume_up_rounded,
+              color: Colors.white,
+            ),
+          ),
+          const Spacer(),
+          if (widget.post.isAdult)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 9,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(.85),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                '+21',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRightActions() {
+    return Positioned(
+      right: 10,
+      bottom: 130,
+      child: Column(
+        children: [
+          _VideoAction(
+            icon: _liked
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+            label: '$_likes',
+            active: _liked,
+            onTap: _toggleLike,
+          ),
+          const SizedBox(height: 18),
+          _VideoAction(
+            icon: Icons.mode_comment_outlined,
+            label: '$_comments',
+            onTap: _openComments,
+          ),
+          const SizedBox(height: 18),
+          _VideoAction(
+            icon: _saved
+                ? Icons.bookmark_rounded
+                : Icons.bookmark_border_rounded,
+            label: _saved ? 'محفوظ' : 'حفظ',
+            active: _saved,
+            onTap: _toggleSave,
+          ),
+          const SizedBox(height: 18),
+          _VideoAction(
+            icon: Icons.share_outlined,
+            label: 'مشاركة',
+            onTap: _share,
+          ),
+          const SizedBox(height: 18),
+          GestureDetector(
+            onTap: _openProfile,
+            child: CircleAvatar(
+              radius: 23,
+              backgroundColor: Colors.white24,
+              backgroundImage:
+                  widget.post.avatarUrl.trim().isNotEmpty
+                      ? NetworkImage(
+                          widget.post.avatarUrl,
+                        )
+                      : null,
+              child: widget.post.avatarUrl.trim().isEmpty
+                  ? const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                    )
+                  : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomInfo() {
+    return Positioned(
+      left: 16,
+      right: 75,
+      bottom: 28,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: _openProfile,
+            child: Row(
+              children: [
+                Text(
+                  '@${widget.post.username}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
                   ),
-                  if (!widget.post.verified && widget.post.username != data.username)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilledButton.tonal(
-                        onPressed: () => unawaited(data.follow(widget.post.username)),
-                        child: Text(data.following.contains(widget.post.username) ? 'متابَع' : 'متابعة'),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (widget.post.text.trim().isNotEmpty)
-                Text(widget.post.text, maxLines: 4, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, height: 1.45)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.music_note, size: 15),
+                ),
+                if (widget.post.verified) ...[
                   const SizedBox(width: 5),
-                  Expanded(child: Text('الصوت الأصلي • N', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                  const Icon(
+                    Icons.verified_rounded,
+                    size: 17,
+                  ),
                 ],
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 10,
-          left: 14,
-          child: const Text('N', style: TextStyle(fontSize: 27, fontWeight: FontWeight.w900)),
-        ),
-      ],
+          if (widget.post.caption.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.post.caption,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (widget.post.tags.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.post.tags
+                  .map((e) => '#$e')
+                  .join(' '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
 
 class _VideoAction extends StatelessWidget {
-  const _VideoAction({required this.icon, required this.value, required this.onTap, this.active = false});
+  const _VideoAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
   final IconData icon;
-  final int? value;
+  final String label;
   final VoidCallback onTap;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        IconButton(
-          onPressed: onTap,
-          style: IconButton.styleFrom(backgroundColor: Colors.black45),
-          icon: Icon(icon, size: 29, color: active ? const Color(0xFFFF2D55) : Colors.white),
-        ),
-        if (value != null) Text('$value', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-}
-
-class ExplorePage extends StatefulWidget {
-  const ExplorePage({super.key});
-
-  @override
-  State<ExplorePage> createState() => _ExplorePageState();
-}
-
-class _ExplorePageState extends State<ExplorePage> {
-  final TextEditingController _search = TextEditingController();
-  bool _searching = false;
-  List<Map<String, dynamic>> _profiles = [];
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_loadExplore());
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadExplore([String query = '']) async {
-    try {
-      dynamic request = data.supabase
-          .from('profiles')
-          .select('id, name, username, avatar_url, verified')
-          .limit(30);
-
-      if (query.trim().isNotEmpty) {
-        final q = query.trim().replaceAll(',', '');
-        request = request.or('username.ilike.%$q%,name.ilike.%$q%');
-      }
-
-      final rows = await request;
-      if (!mounted) return;
-      setState(() {
-        _profiles = List<Map<String, dynamic>>.from(rows);
-      });
-    } catch (_) {
-      // Keep the local feed available if profiles are unavailable.
-    }
-  }
-
-  void _onSearchChanged(String value) {
-    final active = value.trim().isNotEmpty;
-    if (active != _searching) {
-      setState(() => _searching = active);
-    }
-    unawaited(_loadExplore(value));
-  }
-
-  void _openProfile(Map<String, dynamic> profile) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UserProfilePage(
-          name: (profile['name'] ?? 'مستخدم N').toString(),
-          username: (profile['username'] ?? '').toString(),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: NColors.background,
-      appBar: AppBar(
-        title: const Text('استكشاف', style: TextStyle(fontWeight: FontWeight.w900)),
-        centerTitle: false,
-      ),
-      body: AnimatedBuilder(
-        animation: data,
-        builder: (context, _) {
-          final posts = data.visiblePosts();
-          final tags = <String>{};
-          for (final post in posts) {
-            for (final word in post.text.split(RegExp(r'\s+'))) {
-              if (word.startsWith('#') && word.length > 1) tags.add(word);
-            }
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              await data.loadPosts();
-              await _loadExplore(_search.text);
-            },
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 110),
-              children: [
-                TextField(
-                  controller: _search,
-                  onChanged: _onSearchChanged,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'ابحث عن مستخدم أو فيديو أو وسم',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _searching
-                        ? IconButton(
-                            onPressed: () {
-                              _search.clear();
-                              _onSearchChanged('');
-                            },
-                            icon: const Icon(Icons.close_rounded),
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                if (_searching) ...[
-                  const Text('الحسابات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 10),
-                  if (_profiles.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: Text('لا توجد نتائج')),
-                    )
-                  else
-                    ..._profiles.map(
-                      (profile) => Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          onTap: () => _openProfile(profile),
-                          leading: CircleAvatar(
-                            backgroundImage: (profile['avatar_url'] as String?)?.isNotEmpty == true
-                                ? NetworkImage(profile['avatar_url'] as String)
-                                : null,
-                            child: (profile['avatar_url'] as String?)?.isNotEmpty == true
-                                ? null
-                                : const Icon(Icons.person_outline),
-                          ),
-                          title: Row(
-                            children: [
-                              Flexible(child: Text((profile['name'] ?? 'مستخدم N').toString())),
-                              if (profile['verified'] == true) ...[
-                                const SizedBox(width: 5),
-                                const Icon(Icons.verified_rounded, size: 17, color: NColors.cyan),
-                              ],
-                            ],
-                          ),
-                          subtitle: Text('@${profile['username'] ?? ''}'),
-                          trailing: FilledButton(
-                            onPressed: () => data.follow((profile['username'] ?? '').toString()),
-                            child: Text(
-                              data.following.contains((profile['username'] ?? '').toString())
-                                  ? 'متابَع'
-                                  : 'متابعة',
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 18),
-                  const Text('فيديوهات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 10),
-                ] else ...[
-                  const Text('الترند الآن', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                  if (tags.isNotEmpty)
-                    SizedBox(
-                      height: 42,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: tags.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (_, i) => ActionChip(
-                          label: Text(tags.elementAt(i)),
-                          onPressed: () {
-                            _search.text = tags.elementAt(i);
-                            _onSearchChanged(_search.text);
-                          },
-                        ),
-                      ),
-                    ),
-                  if (tags.isEmpty)
-                    const Text('اكتشف أحدث الفيديوهات والحسابات على N', style: TextStyle(color: Colors.white60)),
-                  const SizedBox(height: 20),
-                  const Text('أحدث الفيديوهات', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                ],
-                if (posts.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Center(child: Text('لا توجد فيديوهات حتى الآن')),
-                  )
-                else
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: posts.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 6,
-                      mainAxisSpacing: 6,
-                      childAspectRatio: .68,
-                    ),
-                    itemBuilder: (_, index) {
-                      final post = posts[index];
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => VideoExploreViewer(posts: posts, initialIndex: index),
-                            ),
-                          );
-                        },
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              if (post.imageUrl?.isNotEmpty == true)
-                                Image.network(post.imageUrl!, fit: BoxFit.cover)
-                              else
-                                Container(
-                                  color: NColors.surface,
-                                  alignment: Alignment.center,
-                                  child: const Icon(Icons.play_circle_outline_rounded, size: 42),
-                                ),
-                              Positioned(
-                                left: 7,
-                                bottom: 7,
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.favorite_rounded, size: 14),
-                                    const SizedBox(width: 3),
-                                    Text('${post.likes}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class VideoExploreViewer extends StatefulWidget {
-  const VideoExploreViewer({super.key, required this.posts, required this.initialIndex});
-  final List<NPost> posts;
-  final int initialIndex;
-
-  @override
-  State<VideoExploreViewer> createState() => _VideoExploreViewerState();
-}
-
-class _VideoExploreViewerState extends State<VideoExploreViewer> {
-  late final PageController _controller;
-  late int _index;
-
-  @override
-  void initState() {
-    super.initState();
-    _index = widget.initialIndex;
-    _controller = PageController(initialPage: _index);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.transparent, title: const Text('استكشاف')),
-      body: PageView.builder(
-        controller: _controller,
-        scrollDirection: Axis.vertical,
-        itemCount: widget.posts.length,
-        onPageChanged: (i) => setState(() => _index = i),
-        itemBuilder: (_, i) => ShortVideoCard(post: widget.posts[i], active: i == _index, preload: (i - _index).abs() <= 1),
-      ),
-    );
-  }
-}
-
-class CreatePage extends StatefulWidget {
-  const CreatePage({super.key});
-
-  @override
-  State<CreatePage> createState() => _CreatePageState();
-}
-
-class _CreatePageState extends State<CreatePage> {
-  final ImagePicker _picker = ImagePicker();
-  final caption = TextEditingController();
-  XFile? selectedVideo;
-  XFile? selectedCover;
-  bool adult = false;
-  bool publishing = false;
-  String visibility = 'عام';
-
-  @override
-  void dispose() {
-    caption.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickVideo({required bool camera}) async {
-    final file = await _picker.pickVideo(
-      source: camera ? ImageSource.camera : ImageSource.gallery,
-      maxDuration: const Duration(minutes: 5),
-    );
-    if (!mounted || file == null) return;
-    setState(() {
-      selectedVideo = file;
-      selectedCover = null;
-    });
-  }
-
-  Future<void> _pickCover() async {
-    if (selectedVideo == null) return;
-    final file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
-      maxWidth: 1440,
-    );
-    if (!mounted || file == null) return;
-    setState(() => selectedCover = file);
-  }
-
-  Future<void> publish() async {
-    if (publishing) return;
-    if (selectedVideo == null) {
-      _message('اختر فيديو أولاً');
-      return;
-    }
-    if (adult && !data.adultAllowed) {
-      _message('محتوى +21 غير متاح لهذا الحساب');
-      return;
-    }
-
-    final text = caption.text.trim();
-    if (text.length > 2200) {
-      _message('الوصف طويل جدًا');
-      return;
-    }
-
-    setState(() => publishing = true);
-    try {
-      final videoUrl = await data.uploadVideo(File(selectedVideo!.path));
-      if (!mounted) return;
-      if (videoUrl == null) {
-        _message(data.errorMessage ?? 'تعذر رفع الفيديو');
-        return;
-      }
-
-      String? coverUrl;
-      if (selectedCover != null) {
-        coverUrl = await data.uploadImage(File(selectedCover!.path));
-        if (!mounted) return;
-        if (coverUrl == null) {
-          _message(data.errorMessage ?? 'تعذر رفع الغلاف');
-          return;
-        }
-      }
-
-      final ok = await data.createPost(
-        text,
-        adult: adult,
-        visibility: visibility,
-        video: true,
-        videoUrl: videoUrl,
-        imageUrl: coverUrl,
-      );
-      if (!mounted) return;
-      if (!ok) {
-        _message(data.errorMessage ?? 'تعذر نشر الفيديو');
-        return;
-      }
-
-      caption.clear();
-      setState(() {
-        selectedVideo = null;
-        selectedCover = null;
-        adult = false;
-        visibility = 'عام';
-      });
-      _message('تم نشر الفيديو بنجاح');
-    } finally {
-      if (mounted) setState(() => publishing = false);
-    }
-  }
-
-  void _message(String text) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = NColors;
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('إنشاء فيديو'),
-        actions: [
-          TextButton(
-            onPressed: publishing ? null : publish,
-            child: Text(
-              'نشر',
-              style: TextStyle(
-                color: publishing ? Colors.white38 : colors.primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _CreateAction(
-                  icon: Icons.video_library_outlined,
-                  label: 'من المعرض',
-                  onTap: publishing ? null : () => _pickVideo(camera: false),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _CreateAction(
-                  icon: Icons.camera_alt_outlined,
-                  label: 'تصوير',
-                  outlined: true,
-                  onTap: publishing ? null : () => _pickVideo(camera: true),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: selectedVideo == null
-                ? _EmptyVideoPicker(key: const ValueKey('empty'))
-                : _SelectedVideo(
-                    key: const ValueKey('selected'),
-                    file: File(selectedVideo!.path),
-                    onRemove: publishing
-                        ? null
-                        : () => setState(() {
-                              selectedVideo = null;
-                              selectedCover = null;
-                            }),
-                  ),
-          ),
-          if (selectedVideo != null) ...[
-            const SizedBox(height: 12),
-            _CoverPicker(
-              cover: selectedCover,
-              onTap: publishing ? null : _pickCover,
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.black45,
+              shape: BoxShape.circle,
             ),
-          ],
-          const SizedBox(height: 16),
-          TextField(
-            controller: caption,
-            maxLength: 2200,
-            maxLines: 5,
-            enabled: !publishing,
-            decoration: const InputDecoration(
-              hintText: 'اكتب وصف الفيديو والوسوم...',
-              prefixIcon: Icon(Icons.edit_outlined),
-              alignLabelWithHint: true,
+            child: Icon(
+              icon,
+              color: active
+                  ? Colors.pinkAccent
+                  : Colors.white,
+              size: 28,
             ),
           ),
           const SizedBox(height: 4),
-          DropdownButtonFormField<String>(
-            initialValue: visibility,
-            decoration: const InputDecoration(
-              labelText: 'من يمكنه مشاهدة الفيديو؟',
-              prefixIcon: Icon(Icons.visibility_outlined),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'عام', child: Text('الجميع')),
-              DropdownMenuItem(value: 'المتابعون', child: Text('المتابعون')),
-              DropdownMenuItem(value: 'خاص', child: Text('أنا فقط')),
-            ],
-            onChanged: publishing
-                ? null
-                : (value) => setState(() => visibility = value ?? 'عام'),
-          ),
-          const SizedBox(height: 6),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            value: adult,
-            onChanged: publishing ? null : (value) => setState(() => adult = value),
-            title: const Text('محتوى +21'),
-            subtitle: const Text('يتم تطبيق قيود العمر من الخادم أيضًا'),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 56,
-            child: FilledButton.icon(
-              onPressed: publishing ? null : publish,
-              icon: publishing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.publish_outlined),
-              label: Text(publishing ? 'جارٍ الرفع والنشر...' : 'نشر الفيديو على N'),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1563,654 +1327,21 @@ class _CreatePageState extends State<CreatePage> {
   }
 }
 
-class _CreateAction extends StatelessWidget {
-  const _CreateAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.outlined = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-  final bool outlined;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: outlined
-          ? OutlinedButton.icon(
-              onPressed: onTap,
-              icon: Icon(icon),
-              label: Text(label),
-            )
-          : FilledButton.icon(
-              onPressed: onTap,
-              icon: Icon(icon),
-              label: Text(label),
-            ),
-    );
-  }
-}
-
-class _EmptyVideoPicker extends StatelessWidget {
-  const _EmptyVideoPicker({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 360,
-      decoration: BoxDecoration(
-        color: NColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.video_call_outlined, size: 58, color: Colors.white54),
-            SizedBox(height: 14),
-            Text('اختر فيديو لبدء النشر'),
-            SizedBox(height: 6),
-            Text(
-              'حتى 5 دقائق • عمودي 9:16 يفضل',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectedVideo extends StatelessWidget {
-  const _SelectedVideo({super.key, required this.file, required this.onRemove});
-
-  final File file;
-  final VoidCallback? onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 390,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          VideoPlayerPreview(file: file),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: IconButton.filled(
-              onPressed: onRemove,
-              icon: const Icon(Icons.close),
-            ),
-          ),
-          const Positioned(
-            bottom: 12,
-            left: 12,
-            child: _PreviewBadge(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PreviewBadge extends StatelessWidget {
-  const _PreviewBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: .55),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text('معاينة', style: TextStyle(fontSize: 12)),
-      ),
-    );
-  }
-}
-
-class _CoverPicker extends StatelessWidget {
-  const _CoverPicker({required this.cover, required this.onTap});
-
-  final XFile? cover;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        height: 82,
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: NColors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: cover == null
-                  ? Container(
-                      width: 66,
-                      height: 66,
-                      color: Colors.white.withValues(alpha: .06),
-                      child: const Icon(Icons.image_outlined, color: Colors.white54),
-                    )
-                  : Image.file(
-                      File(cover!.path),
-                      width: 66,
-                      height: 66,
-                      fit: BoxFit.cover,
-                    ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('غلاف الفيديو', style: TextStyle(fontWeight: FontWeight.w700)),
-                  SizedBox(height: 3),
-                  Text(
-                    'اختر صورة مميزة تظهر في الملف الشخصي والاستكشاف',
-                    style: TextStyle(color: Colors.white45, fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_left, color: Colors.white54),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class VideoPlayerPreview extends StatefulWidget {
-  const VideoPlayerPreview({super.key, required this.file});
-  final File file;
-
-  @override
-  State<VideoPlayerPreview> createState() => _VideoPlayerPreviewState();
-}
-
-class _VideoPlayerPreviewState extends State<VideoPlayerPreview> {
-  VideoPlayerController? controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    final value = VideoPlayerController.file(widget.file);
-    await value.initialize();
-    await value.setLooping(true);
-    await value.play();
-    if (!mounted) {
-      await value.dispose();
-      return;
-    }
-    setState(() => controller = value);
-  }
-
-  @override
-  void dispose() {
-    final value = controller;
-    if (value != null) unawaited(value.dispose());
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final value = controller;
-    if (value == null || !value.value.isInitialized) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    return FittedBox(
-      fit: BoxFit.cover,
-      child: SizedBox(
-        width: value.value.size.width,
-        height: value.value.size.height,
-        child: VideoPlayer(value),
-      ),
-    );
-  }
-}
-
-class LivePage extends StatelessWidget {
-  const LivePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final live = data.posts.where((p) => p.videoUrl != null).take(8).toList();
-    return Scaffold(
-      backgroundColor: NColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Row(
-          children: const [
-            NLogo(size: 34),
-            SizedBox(width: 10),
-            Text('البث المباشر'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'ابدأ بثًا',
-            onPressed: () => _showComingSoon(context, 'إنشاء غرفة بث مباشرة'),
-            icon: const Icon(Icons.videocam_outlined),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => data.loadPosts(),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF161A25), Color(0xFF0D1018)],
-                ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: NColors.pink.withOpacity(.16),
-                      border: Border.all(color: NColors.pink),
-                    ),
-                    child: const Icon(Icons.live_tv, color: NColors.pink),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('اكتشف البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                        SizedBox(height: 5),
-                        Text('تابع المبدعين وتفاعل معهم لحظة بلحظة', style: TextStyle(color: NColors.muted)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 22),
-            const Text('مباشر الآن', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 12),
-            if (live.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
-                decoration: BoxDecoration(
-                  color: NColors.surface,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(Icons.podcasts_outlined, size: 52, color: NColors.muted),
-                    SizedBox(height: 12),
-                    Text('لا توجد بثوث مباشرة الآن'),
-                    SizedBox(height: 6),
-                    Text('كن أول من يبدأ بثًا على N', style: TextStyle(color: NColors.muted)),
-                  ],
-                ),
-              )
-            else
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: live.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: .72,
-                ),
-                itemBuilder: (_, i) {
-                  final post = live[i];
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Container(color: NColors.surface),
-                        if (post.imageUrl != null)
-                          Image.network(post.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox()),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)]),
-                          ),
-                        ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                            decoration: BoxDecoration(color: NColors.pink, borderRadius: BorderRadius.circular(10)),
-                            child: const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-                          ),
-                        ),
-                        const Positioned(
-                          left: 12,
-                          right: 12,
-                          bottom: 12,
-                          child: Text('غرفة N المباشرة', style: TextStyle(fontWeight: FontWeight.w800)),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(child: _LiveAction(title: 'الهدايا', icon: Icons.card_giftcard_outlined, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NWalletPage())))),
-                const SizedBox(width: 10),
-                Expanded(child: _LiveAction(title: 'العملات', icon: Icons.monetization_on_outlined, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NWalletPage())))),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static void _showComingSoon(BuildContext context, String name) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name قيد الربط بالخادم')));
-  }
-}
-
-class _LiveAction extends StatelessWidget {
-  const _LiveAction({required this.title, required this.icon, required this.onTap});
-  final String title;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(18),
-    child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: NColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white10)),
-      child: Row(children: [Icon(icon, color: NColors.cyan), const SizedBox(width: 10), Text(title, style: const TextStyle(fontWeight: FontWeight.w800))]),
-    ),
-  );
-}
-
-
-class NWalletPage extends StatefulWidget {
-  const NWalletPage({super.key});
-
-  @override
-  State<NWalletPage> createState() => _NWalletPageState();
-}
-
-class _NWalletPageState extends State<NWalletPage> {
-  bool busy = false;
-  final recipient = TextEditingController();
-
-  @override
-  void dispose() {
-    recipient.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sendGift(String giftId, int price, String name, String icon) async {
-    if (recipient.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اكتب اسم المستخدم أولاً')));
-      return;
-    }
-    setState(() => busy = true);
-    final ok = await data.sendGift(recipientUsername: recipient.text, giftId: giftId);
-    if (!mounted) return;
-    setState(() => busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'تم إرسال $icon $name — الرصيد ${data.coins}' : (data.errorMessage ?? 'تعذر إرسال الهدية'))),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: data,
-      builder: (_, __) => Scaffold(
-        backgroundColor: NColors.background,
-        appBar: AppBar(title: const Text('المحفظة والمتجر')),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF161A25), Color(0xFF10131B)]),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: NColors.cyan.withOpacity(.25)),
-              ),
-              child: Column(children: [
-                const Text('رصيد N', style: TextStyle(color: NColors.muted)),
-                const SizedBox(height: 8),
-                Text('${data.coins}', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 4),
-                const Text('عملة', style: TextStyle(color: NColors.cyan, fontWeight: FontWeight.w700)),
-              ]),
-            ),
-            const SizedBox(height: 24),
-            const Text('المتجر', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            const Text(
-              'شراء العملات سيُفعّل عبر بوابة دفع موثوقة قبل الإصدار التجاري. لا يتم إنشاء عملات مجانية من تطبيق المستخدم.',
-              style: TextStyle(color: NColors.muted),
-            ),
-            const SizedBox(height: 14),
-            for (final pack in const [(100, '100 عملة'), (500, '500 عملة'), (1200, '1200 عملة'), (3000, '3000 عملة')])
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _WalletTile(
-                  icon: Icons.monetization_on_outlined,
-                  title: pack.$2,
-                  trailing: 'قريباً',
-                  onTap: null,
-                ),
-              ),
-            const SizedBox(height: 20),
-            const Text('إرسال هدية', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: recipient,
-              decoration: InputDecoration(
-                hintText: '@اسم_المستخدم',
-                prefixIcon: const Icon(Icons.person_outline),
-                filled: true,
-                fillColor: NColors.surface,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: const [
-                _GiftChip(id: 'rose', name: 'وردة', icon: '🌹', price: 5),
-                _GiftChip(id: 'heart', name: 'قلب', icon: '❤️', price: 20),
-                _GiftChip(id: 'star', name: 'نجمة', icon: '⭐', price: 50),
-                _GiftChip(id: 'diamond', name: 'ألماسة', icon: '💎', price: 100),
-                _GiftChip(id: 'crown', name: 'تاج N', icon: '👑', price: 500),
-              ],
-            ),
-            const SizedBox(height: 20),
-            if (busy) const Center(child: CircularProgressIndicator()),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WalletTile extends StatelessWidget {
-  const _WalletTile({required this.icon, required this.title, required this.trailing, required this.onTap});
-  final IconData icon;
-  final String title;
-  final String trailing;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => Material(
-    color: NColors.surface,
-    borderRadius: BorderRadius.circular(18),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          Icon(icon, color: NColors.cyan),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800))),
-          Text(trailing, style: const TextStyle(color: NColors.pink, fontWeight: FontWeight.w900)),
-        ]),
-      ),
-    ),
-  );
-}
-
-class _GiftChip extends StatelessWidget {
-  const _GiftChip({required this.id, required this.name, required this.icon, required this.price});
-  final String id;
-  final String name;
-  final String icon;
-  final int price;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: () {
-      final state = context.findAncestorStateOfType<_NWalletPageState>();
-      state?._sendGift(id, price, name, icon);
-    },
-    borderRadius: BorderRadius.circular(18),
-    child: Container(
-      width: 112,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: NColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white10)),
-      child: Column(children: [Text(icon, style: const TextStyle(fontSize: 30)), const SizedBox(height: 5), Text(name, style: const TextStyle(fontWeight: FontWeight.w800)), Text('$price N', style: const TextStyle(color: NColors.cyan, fontWeight: FontWeight.w700))]),
-    ),
-  );
-}
-
-class MessagesPage extends StatelessWidget {
-  const MessagesPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'الرسائل',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-      body: AnimatedBuilder(
-        animation: data,
-        builder: (_, __) {
-          final conversations = data.messages.entries.toList();
-
-          if (conversations.isEmpty) {
-            return const Center(
-              child: Text('لا توجد محادثات'),
-            );
-          }
-
-          return ListView(
-            padding: const EdgeInsets.all(12),
-            children: conversations.map(
-              (entry) {
-                final last = entry.value.isEmpty
-                    ? null
-                    : entry.value.last;
-
-                final displayName =
-                    _displayName(entry.key);
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.person),
-                    ),
-                    title: Text(displayName),
-                    subtitle: Text(
-                      last?.text ?? 'لا توجد رسائل',
-                    ),
-                    trailing: const Icon(
-                      Icons.chevron_left,
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatPage(
-                            name: displayName,
-                            username: entry.key,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ).toList(),
-          );
-        },
-      ),
-    );
-  }
-
-  String _displayName(String username) {
-    return '@$username';
-  }
-}
-
-class ChatPage extends StatefulWidget {
-  const ChatPage({
+class CommentsSheet extends StatefulWidget {
+  const CommentsSheet({
     super.key,
-    required this.name,
-    required this.username,
+    required this.post,
   });
 
-  final String name;
-  final String username;
+  final NPost post;
 
   @override
-  State<ChatPage> createState() => _ChatPageState();
+  State<CommentsSheet> createState() => _CommentsSheetState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _CommentsSheetState extends State<CommentsSheet> {
   final controller = TextEditingController();
+  bool sending = false;
 
   @override
   void dispose() {
@@ -2221,11 +1352,15 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> send() async {
     final text = controller.text.trim();
 
-    if (text.isEmpty) return;
+    if (text.isEmpty || sending) return;
+
+    setState(() {
+      sending = true;
+    });
 
     try {
-      await data.sendMessage(
-        widget.username,
+      await data.addComment(
+        widget.post.id,
         text,
       );
 
@@ -2234,14 +1369,255 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) {
         setState(() {});
       }
-    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() {
+          sending = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final comments = data.commentsFor(
+      widget.post.id,
+    );
+
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * .72,
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'التعليقات (${comments.length})',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 17,
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: comments.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'لا توجد تعليقات بعد',
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(14),
+                      itemCount: comments.length,
+                      itemBuilder: (_, index) {
+                        final comment = comments[index];
+
+                        return ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            backgroundImage:
+                                comment.avatarUrl
+                                        .trim()
+                                        .isNotEmpty
+                                    ? NetworkImage(
+                                        comment.avatarUrl,
+                                      )
+                                    : null,
+                            child: comment.avatarUrl
+                                    .trim()
+                                    .isEmpty
+                                ? const Icon(
+                                    Icons.person,
+                                  )
+                                : null,
+                          ),
+                          title: Text(
+                            '@${comment.username}',
+                            style: const TextStyle(
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
+                          ),
+                          subtitle: Text(
+                            comment.text,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            Padding(
+              padding: EdgeInsets.only(
+                left: 12,
+                right: 12,
+                bottom:
+                    MediaQuery.of(context)
+                        .viewInsets
+                        .bottom +
+                    8,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction:
+                          TextInputAction.send,
+                      onSubmitted: (_) => send(),
+                      decoration:
+                          const InputDecoration(
+                        hintText: 'اكتب تعليقًا...',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: sending ? null : send,
+                    icon: sending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.send_rounded,
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );class _CreatePage extends StatefulWidget {
+  const _CreatePage();
+
+  @override
+  State<_CreatePage> createState() => _CreatePageState();
+}
+
+class _CreatePageState extends State<_CreatePage> {
+  final captionController = TextEditingController();
+  final tagsController = TextEditingController();
+
+  XFile? selectedVideo;
+  XFile? selectedCover;
+
+  bool isAdult = false;
+  bool uploading = false;
+
+  @override
+  void dispose() {
+    captionController.dispose();
+    tagsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> pickVideo() async {
+    final picker = ImagePicker();
+
+    final file = await picker.pickVideo(
+      source: ImageSource.gallery,
+    );
+
+    if (file == null || !mounted) return;
+
+    setState(() {
+      selectedVideo = file;
+    });
+  }
+
+  Future<void> pickCover() async {
+    final picker = ImagePicker();
+
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+
+    if (file == null || !mounted) return;
+
+    setState(() {
+      selectedCover = file;
+    });
+  }
+
+  Future<void> publish() async {
+    if (uploading) return;
+
+    if (selectedVideo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اختر فيديو أولاً'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      uploading = true;
+    });
+
+    try {
+      final caption = captionController.text.trim();
+
+      final tags = tagsController.text
+          .split(RegExp(r'[\s,]+'))
+          .map((e) => e.replaceFirst('#', '').trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+
+      await data.createPost(
+        videoFile: selectedVideo!,
+        coverFile: selectedCover,
+        caption: caption,
+        tags: tags,
+        isAdult: isAdult,
+      );
+
       if (!mounted) return;
+
+      captionController.clear();
+      tagsController.clear();
+
+      setState(() {
+        selectedVideo = null;
+        selectedCover = null;
+        isAdult = false;
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تعذر إرسال الرسالة'),
+          content: Text('تم نشر الفيديو بنجاح'),
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر نشر الفيديو: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          uploading = false;
+        });
+      }
     }
   }
 
@@ -2249,421 +1625,457 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              child: Icon(Icons.person),
-            ),
-            const SizedBox(width: 10),
-            Text(widget.name),
-          ],
-        ),
+        title: const Text('إنشاء منشور'),
       ),
-      body: Column(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          Expanded(
-            child: AnimatedBuilder(
-              animation: data,
-              builder: (_, __) {
-                final current =
-                    data.messages[widget.username] ?? [];
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(15),
-                  itemCount: current.length,
-                  itemBuilder: (_, i) {
-                    final currentMessage = current[i];
-
-                    final mine =
-                        currentMessage.sender == data.username;
-
-                    return Align(
-                      alignment: mine
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 8,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: mine
-                              ? const Color(0xFF006D91)
-                              : const Color(0xFF1B1E27),
-                          borderRadius:
-                              BorderRadius.circular(18),
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(currentMessage.text),
-                            const SizedBox(height: 3),
-                            Text(
-                              currentMessage.time,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Colors.white54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+          _UploadPreview(
+            video: selectedVideo,
+            cover: selectedCover,
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      textInputAction:
-                          TextInputAction.send,
-                      onSubmitted: (_) => send(),
-                      decoration: const InputDecoration(
-                        hintText: 'اكتب رسالة...',
-                      ),
-                    ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: uploading ? null : pickVideo,
+                  icon: const Icon(
+                    Icons.video_library_outlined,
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: send,
-                    icon: const Icon(Icons.send),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
-
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends State<ProfilePage> {
-  int tab = 0;
-  int followers = 0;
-  bool loadingFollowers = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFollowers();
-  }
-
-  Future<void> _loadFollowers() async {
-    final count = await data.followerCount(data.username);
-    if (!mounted) return;
-    setState(() { followers = count; loadingFollowers = false; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: data,
-      builder: (_, __) {
-        final myPosts = data.postsOf(data.username);
-        final likedPosts = data.posts.where((post) => post.liked).toList();
-        final visiblePosts = tab == 1 ? likedPosts : tab == 2 ? <NPost>[] : myPosts;
-
-        return Scaffold(
-          backgroundColor: NColors.background,
-          body: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                pinned: true,
-                backgroundColor: NColors.background.withOpacity(.96),
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                title: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('@${data.username}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    if (data.badges.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      const Icon(Icons.verified, color: NColors.cyan, size: 17),
-                    ],
-                  ],
-                ),
-                actions: [
-                  IconButton(
-                    tooltip: 'الإشعارات',
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())),
-                    icon: const Icon(Icons.notifications_none_rounded),
-                  ),
-                  IconButton(
-                    tooltip: 'تسجيل الخروج',
-                    onPressed: () async {
-                      await data.logout();
-                      if (!context.mounted) return;
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginPage()),
-                        (_) => false,
-                      );
-                    },
-                    icon: const Icon(Icons.logout_rounded),
-                  ),
-                ],
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-                  child: Column(
-                    children: [
-                      Stack(
-                        alignment: Alignment.bottomRight,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: NColors.actionGradient,
-                            ),
-                            child: CircleAvatar(
-                              radius: 48,
-                              backgroundColor: NColors.surface,
-                              backgroundImage: data.avatarUrl?.isNotEmpty == true
-                                  ? NetworkImage(data.avatarUrl!)
-                                  : null,
-                              child: data.avatarUrl?.isNotEmpty == true
-                                  ? null
-                                  : const Icon(Icons.person_rounded, size: 48, color: NColors.muted),
-                            ),
-                          ),
-                          Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              color: NColors.pink,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: NColors.background, width: 3),
-                            ),
-                            child: const Icon(Icons.add, size: 18),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(data.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                          if (data.badges.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            const Icon(Icons.verified, color: NColors.cyan, size: 18),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text('@${data.username}', style: const TextStyle(color: NColors.muted)),
-                      if (data.email.isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        Text(data.email, style: const TextStyle(color: NColors.muted, fontSize: 12)),
-                      ],
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _ProfileStat(value: '${myPosts.length}', label: 'فيديو'),
-                          _ProfileStat(value: loadingFollowers ? '—' : '$followers', label: 'المتابعون'),
-                          _ProfileStat(value: '${data.following.length}', label: 'يتابع'),
-                          _ProfileStat(value: '${data.coins}', label: 'N'),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _showProfileMessage(context, 'يمكن تعديل بيانات الملف من إعدادات الحساب'),
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              label: const Text('تعديل الملف الشخصي'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: NColors.white,
-                                side: const BorderSide(color: NColors.divider),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          IconButton(
-                            onPressed: () => Share.share('تابع @${data.username} على N'),
-                            style: IconButton.styleFrom(
-                              backgroundColor: NColors.surface,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            icon: const Icon(Icons.share_outlined),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                  label: const Text('اختيار فيديو'),
                 ),
               ),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _ProfileTabsDelegate(activeIndex: tab, onChanged: (value) {
-                  setState(() => tab = value);
-                }),
-              ),
-              if (visiblePosts.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Text(
-                      tab == 1 ? 'لا توجد فيديوهات أعجبت بها' : tab == 2 ? 'الفيديوهات الخاصة ستظهر هنا' : 'لم تنشر أي فيديو بعد',
-                      style: const TextStyle(color: NColors.muted),
-                    ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: uploading ? null : pickCover,
+                  icon: const Icon(
+                    Icons.image_outlined,
                   ),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.all(3),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _ProfileVideoTile(post: visiblePosts[index]),
-                      childCount: visiblePosts.length,
-                    ),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 3,
-                      mainAxisSpacing: 3,
-                      childAspectRatio: .72,
-                    ),
-                  ),
+                  label: const Text('اختيار غلاف'),
                 ),
+              ),
             ],
           ),
-        );
-      },
-    );
-  }
-
-  void _showProfileMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _ProfileTabsDelegate extends SliverPersistentHeaderDelegate {
-  _ProfileTabsDelegate({required this.activeIndex, required this.onChanged});
-
-  final int activeIndex;
-  final ValueChanged<int> onChanged;
-  @override
-  double get minExtent => 50;
-
-  @override
-  double get maxExtent => 50;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    const tabs = [
-      (Icons.grid_on_rounded, 'الفيديوهات'),
-      (Icons.favorite_border_rounded, 'الإعجابات'),
-      (Icons.lock_outline_rounded, 'خاص'),
-    ];
-    return Container(
-      color: NColors.background,
-      child: Row(
-        children: [
-          for (var i = 0; i < tabs.length; i++)
-            Expanded(
-              child: InkWell(
-                onTap: () => onChanged(i),
-                child: _ProfileTab(icon: tabs[i].$1, active: activeIndex == i, label: tabs[i].$2),
+          const SizedBox(height: 18),
+          TextField(
+            controller: captionController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'الوصف',
+              hintText: 'اكتب وصف الفيديو...',
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: tagsController,
+            decoration: const InputDecoration(
+              labelText: 'الوسوم',
+              hintText: '#رياضة #ترفيه',
+            ),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: isAdult,
+            onChanged: uploading
+                ? null
+                : (value) {
+                    setState(() {
+                      isAdult = value;
+                    });
+                  },
+            title: const Text(
+              'محتوى +21',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
               ),
             ),
+            subtitle: const Text(
+              'ضع علامة +21 إذا كان المحتوى للبالغين',
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: uploading ? null : publish,
+              child: uploading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'نشر الفيديو',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+            ),
+          ),
         ],
       ),
     );
   }
-
-  @override
-  bool shouldRebuild(covariant SliverPersistentHeaderDelegate oldDelegate) => false;
 }
 
-class _ProfileTab extends StatelessWidget {
-  const _ProfileTab({required this.icon, required this.label, this.active = false});
+class _UploadPreview extends StatelessWidget {
+  const _UploadPreview({
+    required this.video,
+    required this.cover,
+  });
 
-  final IconData icon;
-  final String label;
-  final bool active;
+  final XFile? video;
+  final XFile? cover;
 
   @override
   Widget build(BuildContext context) {
+    if (video == null && cover == null) {
+      return Container(
+        height: 260,
+        decoration: BoxDecoration(
+          color: NColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.video_collection_outlined,
+                size: 56,
+              ),
+              SizedBox(height: 10),
+              Text('اختر فيديو للبدء'),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
+      height: 260,
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: active ? NColors.pink : NColors.divider, width: active ? 2 : 1)),
+        color: NColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 20, color: active ? NColors.white : NColors.muted),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 9, color: active ? NColors.white : NColors.muted)),
-        ],
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: cover != null
+          ? Image.file(
+              File(cover!.path),
+              fit: BoxFit.cover,
+            )
+          : const Center(
+              child: Icon(
+                Icons.play_circle_fill_rounded,
+                size: 64,
+              ),
+            ),
     );
   }
 }
 
 class _ProfileVideoTile extends StatelessWidget {
-  const _ProfileVideoTile({required this.post});
+  const _ProfileVideoTile({
+    required this.post,
+  });
 
   final NPost post;
 
   @override
   Widget build(BuildContext context) {
-    final image = post.imageUrl ?? '';
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PostCard(post: post))),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (image.isNotEmpty)
-            Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: NColors.surface, child: Icon(Icons.image_not_supported_outlined)))
-          else
-            const ColoredBox(color: NColors.surface, child: Center(child: Icon(Icons.play_circle_outline_rounded, size: 38, color: NColors.muted))),
-          if (post.video)
-            const Positioned(top: 7, left: 7, child: Icon(Icons.play_arrow_rounded, size: 18)),
-          Positioned(
-            bottom: 6,
-            right: 6,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.play_arrow_rounded, size: 14),
-                const SizedBox(width: 2),
-                Text('${post.likes}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-              ],
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              backgroundColor: NColors.background,
+              body: SafeArea(
+                child: ShortVideoCard(
+                  post: post,
+                  active: true,
+                  preload: true,
+                ),
+              ),
             ),
           ),
-        ],
+        );
+      },
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (post.coverUrl.trim().isNotEmpty)
+                Image.network(
+                  post.coverUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) {
+                    return const ColoredBox(
+                      color: Colors.black26,
+                      child: Icon(
+                        Icons.video_library_outlined,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    );
+                  },
+                )
+              else
+                const ColoredBox(
+                  color: Colors.black26,
+                  child: Icon(
+                    Icons.video_library_outlined,
+                    color: Colors.white,
+                    size: 34,
+                  ),
+                ),
+              const Positioned(
+                right: 7,
+                bottom: 7,
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              if (post.isAdult)
+                Positioned(
+                  top: 7,
+                  right: 7,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      '+21',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class UserProfilePage extends StatefulWidget {
+  const UserProfilePage({
+    super.key,
+    required this.username,
+  });
+
+  final String username;
+
+  @override
+  State<UserProfilePage> createState() =>
+      _UserProfilePageState();
+}
+
+class _UserProfilePageState
+    extends State<UserProfilePage> {
+  bool loading = true;
+  bool following = false;
+
+  NProfile? profile;
+  List<NPost> posts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      profile = await data.publicProfile(
+        widget.username,
+      );
+
+      posts = await data.postsForUser(
+        widget.username,
+      );
+
+      following = data.isFollowing(
+        widget.username,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> toggleFollow() async {
+    final result = await data.toggleFollow(
+      widget.username,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      following = result;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (profile == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(
+          child: Text('المستخدم غير موجود'),
+        ),
+      );
+    }
+
+    final p = profile!;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('@${p.username}'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: load,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Center(
+              child: CircleAvatar(
+                radius: 42,
+                backgroundImage:
+                    p.avatarUrl.trim().isNotEmpty
+                        ? NetworkImage(p.avatarUrl)
+                        : null,
+                child: p.avatarUrl.trim().isEmpty
+                    ? const Icon(
+                        Icons.person,
+                        size: 42,
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                '@${p.username}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            if (p.bio.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  p.bio,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.spaceEvenly,
+              children: [
+                _ProfileStat(
+                  value: '${p.followers}',
+                  label: 'متابعون',
+                ),
+                _ProfileStat(
+                  value: '${p.following}',
+                  label: 'يتابع',
+                ),
+                _ProfileStat(
+                  value: '${posts.length}',
+                  label: 'منشورات',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (p.username != data.currentUsername)
+              SizedBox(
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: toggleFollow,
+                  child: Text(
+                    following ? 'إلغاء المتابعة' : 'متابعة',
+                  ),
+                ),
+              ),
+            const SizedBox(height: 22),
+            if (posts.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(30),
+                child: Center(
+                  child: Text(
+                    'لا توجد منشورات',
+                  ),
+                ),
+              )
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics:
+                    const NeverScrollableScrollPhysics(),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 7,
+                  mainAxisSpacing: 7,
+                  childAspectRatio: .68,
+                ),
+                itemCount: posts.length,
+                itemBuilder: (_, index) {
+                  return _ProfileVideoTile(
+                    post: posts[index],
+                  );
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _ProfileStat extends StatelessWidget {
-  const _ProfileStat({required this.value, required this.label});
+  const _ProfileStat({
+    required this.value,
+    required this.label,
+  });
 
   final String value;
   final String label;
@@ -2672,157 +2084,764 @@ class _ProfileStat extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
+        ),
         const SizedBox(height: 3),
-        Text(label, style: const TextStyle(color: NColors.muted, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+          ),
+        ),
       ],
     );
   }
 }
-
-class UserProfilePage extends StatelessWidget {
-  const UserProfilePage({
-    super.key,
-    required this.name,
-    required this.username,
-  });
-
-  final String name;
-  final String username;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: data,
-      builder: (_, __) {
-        final userPosts = data.postsOf(username);
-        final isFollowing =
-            data.following.contains(username);
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text('@$username'),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              const SizedBox(height: 10),
-              const Center(
-                child: CircleAvatar(
-                  radius: 48,
-                  child: Icon(
-                    Icons.person,
-                    size: 50,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                name,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              Text(
-                '@$username',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white60,
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () {
-                  data.follow(username);
-                },
-                child: Text(
-                  isFollowing
-                      ? 'إلغاء المتابعة'
-                      : 'متابعة',
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Divider(),
-              const SizedBox(height: 12),
-              const Text(
-                'المنشورات',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (userPosts.isEmpty)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Text(
-                      'لا توجد منشورات',
-                    ),
-                  ),
-                )
-              else
-                ...userPosts.map(
-                  (post) => Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: 12,
-                    ),
-                    child: PostCard(
-                      post: post,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
   }
-}
+}      }
+      
+      String? coverUrl;
 
-class NotificationsPage extends StatelessWidget {
-  const NotificationsPage({super.key});
+      if (selectedCover != null) {
+        final bytes = await selectedCover!.readAsBytes();
+        final path =
+            '${data.currentUserId}/covers/${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+        await data.uploadBytes(
+          bucket: 'media',
+          path: path,
+          bytes: bytes,
+          contentType: 'image/jpeg',
+        );
+
+        coverUrl = data.publicStorageUrl(
+          bucket: 'media',
+          path: path,
+        );
+      }
+
+      final videoBytes = await selectedVideo!.readAsBytes();
+      final videoPath =
+          '${data.currentUserId}/videos/${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+      await data.uploadBytes(
+        bucket: 'media',
+        path: videoPath,
+        bytes: videoBytes,
+        contentType: 'video/mp4',
+      );
+
+      final videoUrl = data.publicStorageUrl(
+        bucket: 'media',
+        path: videoPath,
+      );
+
+      await data.createPostRecord(
+        videoUrl: videoUrl,
+        coverUrl: coverUrl,
+        caption: caption,
+        tags: tags,
+        isAdult: isAdult,
+      );
+
+      if (!mounted) return;
+
+      captionController.clear();
+      tagsController.clear();
+
+      setState(() {
+        selectedVideo = null;
+        selectedCover = null;
+        isAdult = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم نشر الفيديو بنجاح'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر نشر الفيديو: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          uploading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الإشعارات'),
+        title: const Text('إنشاء'),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: const [
-          ListTile(
-            leading: CircleAvatar(
-              child: Icon(Icons.favorite),
-            ),
-            title: Text('إعجاب جديد'),
-            subtitle: Text(
-              'أعجب شخص بمنشورك',
+        padding: const EdgeInsets.all(16),
+        children: [
+          _UploadPreview(
+            video: selectedVideo,
+            cover: selectedCover,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: uploading ? null : pickVideo,
+                  icon: const Icon(
+                    Icons.video_library_outlined,
+                  ),
+                  label: const Text('اختيار فيديو'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: uploading ? null : pickCover,
+                  icon: const Icon(
+                    Icons.image_outlined,
+                  ),
+                  label: const Text('الغلاف'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          TextField(
+            controller: captionController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'الوصف',
+              hintText: 'اكتب وصف الفيديو...',
             ),
           ),
-          ListTile(
-            leading: CircleAvatar(
-              child: Icon(Icons.person_add),
-            ),
-            title: Text('متابع جديد'),
-            subtitle: Text(
-              'بدأ شخص بمتابعتك',
+          const SizedBox(height: 14),
+          TextField(
+            controller: tagsController,
+            decoration: const InputDecoration(
+              labelText: 'الوسوم',
+              hintText: '#رياضة #ترفيه',
             ),
           ),
-          ListTile(
-            leading: CircleAvatar(
-              child: Icon(Icons.comment),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: isAdult,
+            onChanged: uploading
+                ? null
+                : (value) {
+                    setState(() {
+                      isAdult = value;
+                    });
+                  },
+            title: const Text(
+              'محتوى +21',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            title: Text('تعليق جديد'),
-            subtitle: Text(
-              'تمت إضافة تعليق على منشورك',
+            subtitle: const Text(
+              'ضع علامة +21 إذا كان المحتوى للبالغين',
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              onPressed: uploading ? null : publish,
+              child: uploading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      'نشر الفيديو',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _UploadPreview extends StatelessWidget {
+  const _UploadPreview({
+    required this.video,
+    required this.cover,
+  });
+
+  final XFile? video;
+  final XFile? cover;
+
+  @override
+  Widget build(BuildContext context) {
+    if (video == null && cover == null) {
+      return Container(
+        height: 260,
+        decoration: BoxDecoration(
+          color: NColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.video_collection_outlined,
+                size: 56,
+              ),
+              SizedBox(height: 10),
+              Text('اختر فيديو للبدء'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 260,
+      decoration: BoxDecoration(
+        color: NColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: cover != null
+          ? Image.file(
+              File(cover!.path),
+              fit: BoxFit.cover,
+            )
+          : const Center(
+              child: Icon(
+                Icons.play_circle_fill_rounded,
+                size: 64,
+              ),
+            ),
+    );
+  }
+}
+
+class _ExplorePage extends StatefulWidget {
+  const _ExplorePage();
+
+  @override
+  State<_ExplorePage> createState() => _ExplorePageState();
+}
+
+class _ExplorePageState extends State<_ExplorePage> {
+  final searchController = TextEditingController();
+
+  bool searching = false;
+  List<NProfile> profiles = [];
+  List<NPost> posts = [];
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> search() async {
+    final query = searchController.text.trim();
+
+    if (query.isEmpty) {
+      setState(() {
+        searching = false;
+        profiles = [];
+        posts = [];
+      });
+      return;
+    }
+
+    setState(() {
+      searching = true;
+    });
+
+    try {
+      profiles = await data.searchProfiles(query);
+      posts = await data.searchPosts(query);
+    } finally {
+      if (mounted) {
+        setState(() {
+          searching = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('استكشاف'),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              14,
+              8,
+              14,
+              10,
+            ),
+            child: TextField(
+              controller: searchController,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => search(),
+              decoration: InputDecoration(
+                hintText: 'ابحث عن مستخدم أو فيديو...',
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                ),
+                suffixIcon: IconButton(
+                  onPressed: search,
+                  icon: const Icon(
+                    Icons.arrow_forward_rounded,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (searching)
+            const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: searchController.text.trim().isEmpty
+                ? const Center(
+                    child: Text(
+                      'ابحث عن المستخدمين والمنشورات',
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: search,
+                    child: ListView(
+                      padding: const EdgeInsets.all(14),
+                      children: [
+                        if (profiles.isNotEmpty) ...[
+                          const Text(
+                            'المستخدمون',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          ...profiles.map(
+                            (profile) => ListTile(
+                              contentPadding:
+                                  EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                backgroundImage: profile
+                                        .avatarUrl
+                                        .trim()
+                                        .isNotEmpty
+                                    ? NetworkImage(
+                                        profile.avatarUrl,
+                                      )
+                                    : null,
+                                child: profile.avatarUrl
+                                        .trim()
+                                        .isEmpty
+                                    ? const Icon(
+                                        Icons.person,
+                                      )
+                                    : null,
+                              ),
+                              title: Text(
+                                '@${profile.username}',
+                                style: const TextStyle(
+                                  fontWeight:
+                                      FontWeight.w800,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${profile.followers} متابع',
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        PublicProfilePage(
+                                      username:
+                                          profile.username,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                        ],
+                        const Text(
+                          'المنشورات',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (posts.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(30),
+                            child: Center(
+                              child: Text(
+                                'لا توجد نتائج',
+                              ),
+                            ),
+                          )
+                        else
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics:
+                                const NeverScrollableScrollPhysics(),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 7,
+                              mainAxisSpacing: 7,
+                              childAspectRatio: .68,
+                            ),
+                            itemCount: posts.length,
+                            itemBuilder: (_, index) {
+                              return _ProfileVideoTile(
+                                post: posts[index],
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LivePage extends StatelessWidget {
+  const _LivePage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('البث المباشر'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            height: 240,
+            decoration: BoxDecoration(
+              color: NColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.live_tv_rounded,
+                    size: 64,
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'البث المباشر قريباً',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'واجهة البث جاهزة، وسيتم ربط مزود البث لاحقاً.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.videocam_rounded),
+              ),
+              title: const Text(
+                'ابدأ بثاً مباشراً',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              subtitle: const Text(
+                'هذه الميزة غير مفعلة حالياً',
+              ),
+              trailing: const Icon(
+                Icons.lock_outline_rounded,
+              ),
+              onTap: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'البث المباشر غير متاح حالياً',
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PublicProfilePage extends StatefulWidget {
+  const PublicProfilePage({
+    super.key,
+    required this.username,
+  });
+
+  final String username;
+
+  @override
+  State<PublicProfilePage> createState() =>
+      _PublicProfilePageState();
+}
+
+class _PublicProfilePageState
+    extends State<PublicProfilePage> {
+  bool loading = true;
+  bool following = false;
+
+  NProfile? profile;
+  List<NPost> posts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      profile = await data.publicProfile(
+        widget.username,
+      );
+
+      posts = await data.postsForUser(
+        widget.username,
+      );
+
+      following = data.isFollowing(
+        widget.username,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> toggleFollow() async {
+    final result = await data.toggleFollow(
+      widget.username,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      following = result;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (profile == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: const Center(
+          child: Text('المستخدم غير موجود'),
+        ),
+      );
+    }
+
+    final p = profile!;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('@${p.username}'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: load,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Center(
+              child: CircleAvatar(
+                radius: 42,
+                backgroundImage:
+                    p.avatarUrl.trim().isNotEmpty
+                        ? NetworkImage(p.avatarUrl)
+                        : null,
+                child: p.avatarUrl.trim().isEmpty
+                    ? const Icon(
+                        Icons.person,
+                        size: 42,
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                '@${p.username}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            if (p.bio.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  p.bio,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.spaceEvenly,
+              children: [
+                _ProfileStat(
+                  value: '${p.followers}',
+                  label: 'متابعون',
+                ),
+                _ProfileStat(
+                  value: '${p.following}',
+                  label: 'يتابع',
+                ),
+                _ProfileStat(
+                  value: '${posts.length}',
+                  label: 'منشورات',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (p.username != data.currentUsername)
+              SizedBox(
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: toggleFollow,
+                  child: Text(
+                    following
+                        ? 'إلغاء المتابعة'
+                        : 'متابعة',
+                  ),
+                ),
+              ),
+            const SizedBox(height: 22),
+            if (posts.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(30),
+                child: Center(
+                  child: Text(
+                    'لا توجد منشورات',
+                  ),
+                ),
+              )
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics:
+                    const NeverScrollableScrollPhysics(),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 7,
+                  mainAxisSpacing: 7,
+                  childAspectRatio: .68,
+                ),
+                itemCount: posts.length,
+                itemBuilder: (_, index) {
+                  return _ProfileVideoTile(
+                    post: posts[index],
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  const _ProfileStat({
+    required this.value,
+    required this.label,
+  });
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 }
