@@ -881,9 +881,7 @@ class _ShortVideoCardState extends State<ShortVideoCard> {
   Future<void> _share() async {
     final url = widget.post.videoUrl?.trim();
     final text = url == null || url.isEmpty ? 'شاهد هذا المنشور على N' : 'شاهد هذا الفيديو على N\n$url';
-    await SharePlus.instance.share(ShareParams(text: text));
-  }
-
+    await Share.share(text);    
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
