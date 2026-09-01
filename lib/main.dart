@@ -1061,7 +1061,7 @@ class _CreatePageState extends State<CreatePage> {
             },
           ),
           DropdownButtonFormField<String>(
-            initialValue: visibility,
+            value: visibility,
             decoration: const InputDecoration(
               labelText: 'الخصوصية',
             ),
@@ -1659,4 +1659,3 @@ class NotificationsPage extends StatelessWidget {
     );
   }
 }
-
