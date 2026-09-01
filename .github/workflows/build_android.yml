@@ -51,6 +51,23 @@ jobs:
           flutter clean
           flutter pub get
 
+      - name: Prepare Android signing
+        env:
+          CM_KEYSTORE: ${{ secrets.CM_KEYSTORE }}
+          CM_KEYSTORE_PASSWORD: ${{ secrets.CM_KEYSTORE_PASSWORD }}
+          CM_KEY_ALIAS: ${{ secrets.CM_KEY_ALIAS }}
+          CM_KEY_PASSWORD: ${{ secrets.CM_KEY_PASSWORD }}
+        run: |
+          set -e
+
+          echo "$CM_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/n-release.p12"
+
+          test -s "$RUNNER_TEMP/n-release.p12"
+
+          echo "CM_KEYSTORE_PATH=$RUNNER_TEMP/n-release.p12" >> "$GITHUB_ENV"
+
+          echo "Android signing keystore prepared successfully."
+
       - name: Verify Flutter
         run: |
           set -e
@@ -67,10 +84,16 @@ jobs:
 
       - name: Build release APK
         id: build_apk
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
           set -o pipefail
 
-          flutter build apk --release --verbose 2>&1 | tee build.log
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --verbose 2>&1 | tee build.log
 
       - name: Show build error
         if: failure()
