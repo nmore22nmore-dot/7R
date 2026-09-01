@@ -1446,7 +1446,7 @@ class _CreatePageState extends State<CreatePage> {
   Widget build(BuildContext context) {
     final colors = NColors;
     return Scaffold(
-      backgroundColor: colors.background,
+     backgroundColor: NColors.background, 
       appBar: AppBar(
         title: const Text('إنشاء فيديو'),
         actions: [
