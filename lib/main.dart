@@ -163,7 +163,9 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text)),
+      SnackBar(
+        content: Text(text),
+      ),
     );
   }
 
@@ -364,7 +366,9 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
+              constraints: const BoxConstraints(
+                maxWidth: 500,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -406,7 +410,9 @@ class _LoginPageState extends State<LoginPage> {
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'الاسم',
-                        prefixIcon: Icon(Icons.person_outline),
+                        prefixIcon: Icon(
+                          Icons.person_outline,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -417,7 +423,9 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: const InputDecoration(
                       labelText: 'اسم المستخدم',
                       hintText: 'username',
-                      prefixIcon: Icon(Icons.alternate_email),
+                      prefixIcon: Icon(
+                        Icons.alternate_email,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -427,7 +435,9 @@ class _LoginPageState extends State<LoginPage> {
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'البريد الإلكتروني',
-                      prefixIcon: Icon(Icons.email_outlined),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -437,7 +447,9 @@ class _LoginPageState extends State<LoginPage> {
                     onSubmitted: (_) => submit(),
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
-                      prefixIcon: const Icon(Icons.lock_outline),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                      ),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -456,7 +468,9 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 14),
                     OutlinedButton.icon(
                       onPressed: chooseBirthDate,
-                      icon: const Icon(Icons.cake_outlined),
+                      icon: const Icon(
+                        Icons.cake_outlined,
+                      ),
                       label: Text(
                         birthDate == null
                             ? 'اختيار تاريخ الميلاد'
@@ -657,9 +671,10 @@ class PostCard extends StatelessWidget {
 
                   if (text.isEmpty) return;
 
-                  // متوافق مع comment(post) الموجودة حالياً
-                  // في n_data.dart.
-                  data.comment(post);
+                  data.comment(
+                    post,
+                    text,
+                  );
 
                   Navigator.pop(dialogContext);
 
@@ -690,7 +705,9 @@ class PostCard extends StatelessWidget {
       child: Container(
         constraints: fullScreen
             ? const BoxConstraints.expand()
-            : const BoxConstraints(minHeight: 230),
+            : const BoxConstraints(
+                minHeight: 230,
+              ),
         padding: const EdgeInsets.all(18),
         child: Stack(
           children: [
@@ -813,7 +830,9 @@ class ExplorePage extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'استكشاف',
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
       body: ListView(
@@ -921,13 +940,26 @@ class _CreatePageState extends State<CreatePage> {
     });
 
     try {
-      data.createPost(
+      final success = await data.createPost(
         text,
         adult: adult,
         visibility: visibility,
       );
 
       if (!mounted) return;
+
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              data.errorMessage?.isNotEmpty == true
+                  ? data.errorMessage!
+                  : 'تعذر نشر المنشور',
+            ),
+          ),
+        );
+        return;
+      }
 
       controller.clear();
 
@@ -1087,7 +1119,9 @@ class MessagesPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'الرسائل',
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
         ),
       ),
       body: AnimatedBuilder(
@@ -1105,10 +1139,12 @@ class MessagesPage extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             children: conversations.map(
               (entry) {
-                final last =
-                    entry.value.isEmpty ? null : entry.value.last;
+                final last = entry.value.isEmpty
+                    ? null
+                    : entry.value.last;
 
-                final displayName = _displayName(entry.key);
+                final displayName =
+                    _displayName(entry.key);
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -1120,7 +1156,9 @@ class MessagesPage extends StatelessWidget {
                     subtitle: Text(
                       last?.text ?? 'لا توجد رسائل',
                     ),
-                    trailing: const Icon(Icons.chevron_left),
+                    trailing: const Icon(
+                      Icons.chevron_left,
+                    ),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -1177,20 +1215,30 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
-  void send() {
+  Future<void> send() async {
     final text = controller.text.trim();
 
     if (text.isEmpty) return;
 
-    data.sendMessage(
-      widget.username,
-      text,
-    );
+    try {
+      await data.sendMessage(
+        widget.username,
+        text,
+      );
 
-    controller.clear();
+      controller.clear();
 
-    if (mounted) {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تعذر إرسال الرسالة'),
+        ),
+      );
     }
   }
 
@@ -1232,7 +1280,9 @@ class _ChatPageState extends State<ChatPage> {
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
+                        margin: const EdgeInsets.only(
+                          bottom: 8,
+                        ),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 10,
@@ -1241,7 +1291,8 @@ class _ChatPageState extends State<ChatPage> {
                           color: mine
                               ? const Color(0xFF006D91)
                               : const Color(0xFF1B1E27),
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius:
+                              BorderRadius.circular(18),
                         ),
                         child: Column(
                           crossAxisAlignment:
@@ -1273,7 +1324,8 @@ class _ChatPageState extends State<ChatPage> {
                   Expanded(
                     child: TextField(
                       controller: controller,
-                      textInputAction: TextInputAction.send,
+                      textInputAction:
+                          TextInputAction.send,
                       onSubmitted: (_) => send(),
                       decoration: const InputDecoration(
                         hintText: 'اكتب رسالة...',
@@ -1319,7 +1371,9 @@ class ProfilePage extends StatelessWidget {
                     ),
                   );
                 },
-                icon: const Icon(Icons.notifications_outlined),
+                icon: const Icon(
+                  Icons.notifications_outlined,
+                ),
               ),
               IconButton(
                 onPressed: () async {
@@ -1414,7 +1468,9 @@ class ProfilePage extends StatelessWidget {
                     padding: const EdgeInsets.only(
                       bottom: 12,
                     ),
-                    child: PostCard(post: post),
+                    child: PostCard(
+                      post: post,
+                    ),
                   ),
                 ),
             ],
@@ -1535,7 +1591,9 @@ class UserProfilePage extends StatelessWidget {
                 const Center(
                   child: Padding(
                     padding: EdgeInsets.all(40),
-                    child: Text('لا توجد منشورات'),
+                    child: Text(
+                      'لا توجد منشورات',
+                    ),
                   ),
                 )
               else
@@ -1544,7 +1602,9 @@ class UserProfilePage extends StatelessWidget {
                     padding: const EdgeInsets.only(
                       bottom: 12,
                     ),
-                    child: PostCard(post: post),
+                    child: PostCard(
+                      post: post,
+                    ),
                   ),
                 ),
             ],
@@ -1572,24 +1632,33 @@ class NotificationsPage extends StatelessWidget {
               child: Icon(Icons.favorite),
             ),
             title: Text('إعجاب جديد'),
-            subtitle: Text('أعجب شخص بمنشورك'),
+            subtitle: Text(
+              'أعجب شخص بمنشورك',
+            ),
           ),
           ListTile(
             leading: CircleAvatar(
               child: Icon(Icons.person_add),
             ),
             title: Text('متابع جديد'),
-            subtitle: Text('بدأ شخص بمتابعتك'),
+            subtitle: Text(
+              'بدأ شخص بمتابعتك',
+            ),
           ),
           ListTile(
             leading: CircleAvatar(
               child: Icon(Icons.comment),
             ),
             title: Text('تعليق جديد'),
-            subtitle: Text('تمت إضافة تعليق على منشورك'),
+            subtitle: Text(
+              'تمت إضافة تعليق على منشورك',
+            ),
           ),
         ],
       ),
     );
   }
 }
+
+Commit message:
+"fix: update main.dart to match current NData API"
