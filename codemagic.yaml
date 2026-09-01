@@ -8,9 +8,6 @@ workflows:
       flutter: stable
       java: 17
 
-      vars:
-        CM_KEYSTORE_PATH: "$CM_BUILD_DIR/android/app/n-release.p12"
-
       groups:
         - N_SUPABASE
         - keystore_credentials
@@ -20,7 +17,7 @@ workflows:
         script: |
           echo "flutter.sdk=$FLUTTER_ROOT" > "$CM_BUILD_DIR/android/local.properties"
 
-      - name: Set up Android keystore
+      - name: Prepare Android keystore
         script: |
           echo "$CM_KEYSTORE" | base64 --decode > "$CM_KEYSTORE_PATH"
           chmod 600 "$CM_KEYSTORE_PATH"
