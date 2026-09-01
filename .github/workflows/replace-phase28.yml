@@ -34,7 +34,13 @@ jobs:
           test -d /tmp/phase28/n25/lib
           test -d /tmp/phase28/n25/android
 
-          git rm -r --ignore-unmatch .
+          # Keep GitHub Actions workflows unchanged.
+          find . -mindepth 1 \
+            -not -path './.git' \
+            -not -path './.git/*' \
+            -not -path './.github' \
+            -not -path './.github/*' \
+            -exec rm -rf {} +
 
           cp -a /tmp/phase28/n25/. .
 
@@ -45,5 +51,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git commit -m "Replace repository with Phase 28" || exit 0
+          git commit -m "Replace application with Phase 28" || exit 0
           git push
