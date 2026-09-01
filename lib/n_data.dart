@@ -46,17 +46,26 @@ class NPost {
     bool liked = false,
     bool saved = false,
   }) {
-    final profile = _mapFromDynamic(map['profiles']);
+    final profile = _extractProfile(map);
 
     return NPost(
       id: (map['id'] ?? '').toString(),
-      author: (profile['name'] ?? 'مستخدم N').toString(),
-      username: (profile['username'] ?? '').toString(),
+      author: _stringValue(
+        profile['name'],
+        fallback: 'مستخدم N',
+      ),
+      username: _stringValue(
+        profile['username'],
+        fallback: '',
+      ),
       text: (map['text'] ?? '').toString(),
       likes: likes,
       comments: comments,
       adult: map['adult'] == true,
-      visibility: (map['visibility'] ?? 'عام').toString(),
+      visibility: _stringValue(
+        map['visibility'],
+        fallback: 'عام',
+      ),
       verified: profile['verified'] == true,
       video: map['video'] == true,
       videoUrl: _nullableString(map['video_url']),
@@ -88,14 +97,13 @@ class NMessage {
         : '${created.hour.toString().padLeft(2, '0')}:'
           '${created.minute.toString().padLeft(2, '0')}';
 
-    final profile = _mapFromDynamic(map['profiles']);
+    final profile = _extractProfile(map);
 
     return NMessage(
-      sender: (
-        profile['username'] ??
-        map['sender_username'] ??
-        'مستخدم'
-      ).toString(),
+      sender: _stringValue(
+        profile['username'] ?? map['sender_username'],
+        fallback: 'مستخدم',
+      ),
       text: (map['text'] ?? '').toString(),
       time: time,
     );
@@ -113,8 +121,13 @@ class NConversation {
   final String username;
   final List<NMessage> messages;
 
-  NMessage? get lastMessage =>
-      messages.isEmpty ? null : messages.last;
+  NMessage? get lastMessage {
+    if (messages.isEmpty) {
+      return null;
+    }
+
+    return messages.last;
+  }
 }
 
 class NData extends ChangeNotifier {
@@ -142,8 +155,9 @@ class NData extends ChangeNotifier {
 
   final List<String> badges = [];
   final List<NPost> posts = [];
-  final Set<String> following = {};
-  final Map<String, List<NMessage>> messages = {};
+  final Set<String> following = <String>{};
+  final Map<String, List<NMessage>> messages =
+      <String, List<NMessage>>{};
 
   bool loading = false;
   String? errorMessage;
@@ -162,11 +176,14 @@ class NData extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (supabase.auth.currentSession == null) {
+      final session = supabase.auth.currentSession;
+
+      if (session == null) {
         loggedIn = false;
-      } else {
-        await loadCurrentUser();
+        return;
       }
+
+      await loadCurrentUser();
     } catch (e) {
       loggedIn = false;
       errorMessage = 'تعذر تهيئة التطبيق';
@@ -182,18 +199,6 @@ class NData extends ChangeNotifier {
 
   // =========================================================
   // SET AUTHENTICATED USER
-  // =========================================================
-  //
-  // هذه الدالة مضافة لتتوافق مع main.dart
-  // الذي يستدعيها باستخدام:
-  //
-  // setAuthenticatedUser(
-  //   newName: ...,
-  //   newUsername: ...,
-  //   newEmail: ...,
-  //   newAge: ...,
-  // );
-  //
   // =========================================================
 
   void setAuthenticatedUser({
@@ -212,7 +217,6 @@ class NData extends ChangeNotifier {
 
     email = newEmail.trim();
     age = newAge;
-
     loggedIn = true;
 
     notifyListeners();
@@ -279,6 +283,9 @@ class NData extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // فحص اسم المستخدم قبل التسجيل.
+      // إذا كانت سياسة RLS تمنع الفحص، التسجيل نفسه
+      // سيحسم الأمر من خلال قاعدة البيانات.
       try {
         final existing = await supabase
             .from('profiles')
@@ -315,13 +322,15 @@ class NData extends ChangeNotifier {
         return false;
       }
 
-      if (response.session == null) {
-        name = cleanName;
-        username = cleanUsername;
-        email = cleanEmail;
-        age = newAge;
-        loggedIn = false;
+      name = cleanName;
+      username = cleanUsername;
+      email = cleanEmail;
+      age = newAge;
 
+      // إذا كان تأكيد البريد الإلكتروني مفعلاً،
+      // لن تكون هناك جلسة مباشرة.
+      if (response.session == null) {
+        loggedIn = false;
         return true;
       }
 
@@ -395,6 +404,13 @@ class NData extends ChangeNotifier {
       return loggedIn;
     } on AuthException catch (e) {
       errorMessage = e.message;
+
+      if (kDebugMode) {
+        debugPrint(
+          'N login AuthException: ${e.message}',
+        );
+      }
+
       return false;
     } on PostgrestException catch (e) {
       errorMessage =
@@ -439,13 +455,20 @@ class NData extends ChangeNotifier {
       return;
     }
 
-    name = (profile['name'] ?? 'مستخدم N').toString();
+    name = _stringValue(
+      profile['name'],
+      fallback: 'مستخدم N',
+    );
 
-    username =
-        (profile['username'] ?? 'n_user').toString();
+    username = _stringValue(
+      profile['username'],
+      fallback: 'n_user',
+    );
 
-    email =
-        (profile['email'] ?? user.email ?? '').toString();
+    email = _stringValue(
+      profile['email'] ?? user.email,
+      fallback: '',
+    );
 
     age = _toInt(
       profile['age'],
@@ -488,8 +511,6 @@ class NData extends ChangeNotifier {
       loadFollowing(),
       loadConversations(),
     ]);
-
-    notifyListeners();
   }
 
   // =========================================================
@@ -552,9 +573,22 @@ class NData extends ChangeNotifier {
 
     loggedIn = false;
 
+    privateAccount = false;
+    activityStatus = true;
+    allowMessages = true;
+    notifications = true;
+    sounds = true;
+
+    supporterLevel = 0;
+    coins = 0;
+    avatarUrl = null;
+
+    badges.clear();
     posts.clear();
     following.clear();
     messages.clear();
+
+    errorMessage = null;
 
     notifyListeners();
   }
@@ -564,26 +598,47 @@ class NData extends ChangeNotifier {
   // =========================================================
 
   Future<void> loadPosts() async {
-    if (!loggedIn) {
+    if (userId == null) {
       return;
     }
 
     try {
-      final rows = await supabase
-          .from('posts')
-          .select(
-            '*, public_profiles!posts_user_id_fkey(*)',
-          )
-          .order(
-            'created_at',
-            ascending: false,
+      List<dynamic> rows;
+
+      // نحاول أولاً تحميل المنشورات مع public_profiles.
+      // إذا كان اسم العلاقة غير متاح، نستخدم fallback.
+      try {
+        rows = await supabase
+            .from('posts')
+            .select(
+              '*, public_profiles!posts_user_id_fkey(*)',
+            )
+            .order(
+              'created_at',
+              ascending: false,
+            );
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            'N posts relation query failed: $e',
           );
+        }
+
+        rows = await supabase
+            .from('posts')
+            .select()
+            .order(
+              'created_at',
+              ascending: false,
+            );
+      }
 
       final loaded = <NPost>[];
 
       for (final row in rows) {
         final map = Map<String, dynamic>.from(row);
 
+        // دعم public_profiles إذا كانت العلاقة موجودة.
         final publicProfile =
             _mapFromDynamic(map['public_profiles']);
 
@@ -594,36 +649,100 @@ class NData extends ChangeNotifier {
         final postId =
             (map['id'] ?? '').toString();
 
-        final likeRows = await supabase
-            .from('post_likes')
-            .select('user_id')
-            .eq('post_id', postId);
+        if (postId.isEmpty) {
+          continue;
+        }
 
-        final commentRows = await supabase
-            .from('comments')
-            .select('id')
-            .eq('post_id', postId);
+        // إذا لم يتم تحميل الملف الشخصي من العلاقة،
+        // نحاول تحميله باستخدام user_id.
+        if (publicProfile.isEmpty) {
+          final authorId =
+              (map['user_id'] ?? '').toString();
 
-        final currentUserId = userId;
+          if (authorId.isNotEmpty) {
+            try {
+              final profile = await supabase
+                  .from('public_profiles')
+                  .select()
+                  .eq('id', authorId)
+                  .maybeSingle();
 
-        final liked =
-            currentUserId != null &&
-            likeRows.any(
+              if (profile != null) {
+                map['profiles'] =
+                    Map<String, dynamic>.from(profile);
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint(
+                  'N post profile error: $e',
+                );
+              }
+            }
+          }
+        }
+
+        int likeCount = 0;
+        int commentCount = 0;
+        bool liked = false;
+        bool saved = false;
+
+        try {
+          final likeRows = await supabase
+              .from('post_likes')
+              .select('user_id')
+              .eq('post_id', postId);
+
+          likeCount = likeRows.length;
+
+          final currentId = userId;
+
+          if (currentId != null) {
+            liked = likeRows.any(
               (like) =>
-                  like['user_id'].toString() ==
-                  currentUserId,
+                  like['user_id']?.toString() ==
+                  currentId,
             );
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint(
+              'N post likes error: $e',
+            );
+          }
+        }
 
-        final saved =
-            currentUserId != null
-                ? await _isSaved(postId)
-                : false;
+        try {
+          final commentRows = await supabase
+              .from('comments')
+              .select('id')
+              .eq('post_id', postId);
+
+          commentCount = commentRows.length;
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint(
+              'N post comments error: $e',
+            );
+          }
+        }
+
+        if (userId != null) {
+          try {
+            saved = await _isSaved(postId);
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint(
+                'N post saved error: $e',
+              );
+            }
+          }
+        }
 
         loaded.add(
           NPost.fromMap(
             map,
-            likes: likeRows.length,
-            comments: commentRows.length,
+            likes: likeCount,
+            comments: commentCount,
             liked: liked,
             saved: saved,
           ),
@@ -634,111 +753,19 @@ class NData extends ChangeNotifier {
         ..clear()
         ..addAll(loaded);
 
+      errorMessage = null;
       notifyListeners();
     } catch (e) {
-      try {
-        await _loadPostsFallback();
-        return;
-      } catch (fallbackError) {
-        errorMessage = 'تعذر تحميل المنشورات';
+      errorMessage = 'تعذر تحميل المنشورات';
 
-        if (kDebugMode) {
-          debugPrint(
-            'N loadPosts error: $e',
-          );
-
-          debugPrint(
-            'N loadPosts fallback error: $fallbackError',
-          );
-        }
-
-        notifyListeners();
-      }
-    }
-  }
-
-  Future<void> _loadPostsFallback() async {
-    final rows = await supabase
-        .from('posts')
-        .select()
-        .order(
-          'created_at',
-          ascending: false,
+      if (kDebugMode) {
+        debugPrint(
+          'N loadPosts error: $e',
         );
-
-    final loaded = <NPost>[];
-
-    for (final row in rows) {
-      final map = Map<String, dynamic>.from(row);
-
-      final authorId =
-          (map['user_id'] ?? '').toString();
-
-      if (authorId.isNotEmpty) {
-        try {
-          final profile = await supabase
-              .from('public_profiles')
-              .select()
-              .eq('id', authorId)
-              .maybeSingle();
-
-          if (profile != null) {
-            map['profiles'] =
-                Map<String, dynamic>.from(profile);
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint(
-              'N public profile error: $e',
-            );
-          }
-        }
       }
 
-      final postId =
-          (map['id'] ?? '').toString();
-
-      final likeRows = await supabase
-          .from('post_likes')
-          .select('user_id')
-          .eq('post_id', postId);
-
-      final commentRows = await supabase
-          .from('comments')
-          .select('id')
-          .eq('post_id', postId);
-
-      final currentUserId = userId;
-
-      final liked =
-          currentUserId != null &&
-          likeRows.any(
-            (like) =>
-                like['user_id'].toString() ==
-                currentUserId,
-          );
-
-      final saved =
-          currentUserId != null
-              ? await _isSaved(postId)
-              : false;
-
-      loaded.add(
-        NPost.fromMap(
-          map,
-          likes: likeRows.length,
-          comments: commentRows.length,
-          liked: liked,
-          saved: saved,
-        ),
-      );
+      notifyListeners();
     }
-
-    posts
-      ..clear()
-      ..addAll(loaded);
-
-    notifyListeners();
   }
 
   // =========================================================
@@ -757,15 +784,20 @@ class NData extends ChangeNotifier {
 
     final cleanText = text.trim();
 
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       errorMessage = 'يجب تسجيل الدخول أولاً';
       notifyListeners();
       return false;
     }
 
+    final cleanVideoUrl = _nullableString(videoUrl);
+    final cleanImageUrl = _nullableString(imageUrl);
+
     if (cleanText.isEmpty &&
-        videoUrl == null &&
-        imageUrl == null) {
+        cleanVideoUrl == null &&
+        cleanImageUrl == null) {
       errorMessage =
           'اكتب منشورًا أو اختر صورة أو فيديو';
       notifyListeners();
@@ -779,7 +811,7 @@ class NData extends ChangeNotifier {
       return false;
     }
 
-    const allowedVisibility = {
+    const allowedVisibility = <String>{
       'عام',
       'المتابعون',
       'خاص',
@@ -794,13 +826,13 @@ class NData extends ChangeNotifier {
 
     try {
       await supabase.from('posts').insert({
-        'user_id': userId,
+        'user_id': currentUserId,
         'text': cleanText,
         'adult': adult,
         'visibility': visibility,
         'video': video,
-        'video_url': videoUrl,
-        'image_url': imageUrl,
+        'video_url': cleanVideoUrl,
+        'image_url': cleanImageUrl,
       });
 
       await loadPosts();
@@ -837,7 +869,9 @@ class NData extends ChangeNotifier {
   // =========================================================
 
   Future<void> deletePost(NPost post) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return;
     }
 
@@ -846,11 +880,22 @@ class NData extends ChangeNotifier {
           .from('posts')
           .delete()
           .eq('id', post.id)
-          .eq('user_id', userId!);
+          .eq('user_id', currentUserId);
 
       posts.removeWhere(
         (item) => item.id == post.id,
       );
+
+      notifyListeners();
+    } on PostgrestException catch (e) {
+      errorMessage =
+          'تعذر حذف المنشور: ${e.message}';
+
+      if (kDebugMode) {
+        debugPrint(
+          'N deletePost PostgrestException: ${e.message}',
+        );
+      }
 
       notifyListeners();
     } catch (e) {
@@ -872,15 +917,18 @@ class NData extends ChangeNotifier {
 
   List<NPost> visiblePosts() {
     return posts.where((post) {
+      // حماية +21
       if (post.adult && !adultAllowed) {
         return false;
       }
 
+      // المنشور الخاص يظهر لصاحبه فقط.
       if (post.visibility == 'خاص' &&
           post.username != username) {
         return false;
       }
 
+      // منشورات المتابعين.
       if (post.visibility == 'المتابعون' &&
           post.username != username &&
           !following.contains(post.username)) {
@@ -896,9 +944,15 @@ class NData extends ChangeNotifier {
   // =========================================================
 
   List<NPost> postsOf(String user) {
+    final cleanUser = user.trim();
+
+    if (cleanUser.isEmpty) {
+      return <NPost>[];
+    }
+
     return posts
         .where(
-          (post) => post.username == user,
+          (post) => post.username == cleanUser,
         )
         .toList();
   }
@@ -908,17 +962,21 @@ class NData extends ChangeNotifier {
   // =========================================================
 
   Future<void> like(NPost post) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return;
     }
 
+    final wasLiked = post.liked;
+
     try {
-      if (post.liked) {
+      if (wasLiked) {
         await supabase
             .from('post_likes')
             .delete()
             .eq('post_id', post.id)
-            .eq('user_id', userId!);
+            .eq('user_id', currentUserId);
 
         post.liked = false;
 
@@ -928,13 +986,14 @@ class NData extends ChangeNotifier {
       } else {
         await supabase.from('post_likes').insert({
           'post_id': post.id,
-          'user_id': userId,
+          'user_id': currentUserId,
         });
 
         post.liked = true;
         post.likes++;
       }
 
+      errorMessage = null;
       notifyListeners();
     } on PostgrestException catch (e) {
       errorMessage =
@@ -968,7 +1027,9 @@ class NData extends ChangeNotifier {
     NPost post,
     String text,
   ) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       errorMessage = 'يجب تسجيل الدخول أولاً';
       notifyListeners();
       return false;
@@ -992,12 +1053,11 @@ class NData extends ChangeNotifier {
     try {
       await supabase.from('comments').insert({
         'post_id': post.id,
-        'user_id': userId,
+        'user_id': currentUserId,
         'text': clean,
       });
 
       post.comments++;
-
       errorMessage = null;
 
       notifyListeners();
@@ -1033,18 +1093,7 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
-  // COMMENT
-  // =========================================================
-  //
-  // النص أصبح اختياريًا حتى يتوافق مع الاستدعاءات
-  // التي قد تستخدم:
-  //
-  // data.comment(post);
-  //
-  // أو:
-  //
-  // data.comment(post, text);
-  //
+  // COMMENT COMPATIBILITY
   // =========================================================
 
   Future<bool> comment(
@@ -1055,13 +1104,15 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
-  // SAVED
+  // SAVED POSTS
   // =========================================================
 
   Future<bool> _isSaved(
     String postId,
   ) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return false;
     }
 
@@ -1069,7 +1120,7 @@ class NData extends ChangeNotifier {
         .from('saved_posts')
         .select('post_id')
         .eq('post_id', postId)
-        .eq('user_id', userId!)
+        .eq('user_id', currentUserId)
         .maybeSingle();
 
     return row != null;
@@ -1078,7 +1129,9 @@ class NData extends ChangeNotifier {
   Future<void> save(
     NPost post,
   ) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return;
     }
 
@@ -1088,18 +1141,19 @@ class NData extends ChangeNotifier {
             .from('saved_posts')
             .delete()
             .eq('post_id', post.id)
-            .eq('user_id', userId!);
+            .eq('user_id', currentUserId);
 
         post.saved = false;
       } else {
         await supabase.from('saved_posts').insert({
           'post_id': post.id,
-          'user_id': userId,
+          'user_id': currentUserId,
         });
 
         post.saved = true;
       }
 
+      errorMessage = null;
       notifyListeners();
     } on PostgrestException catch (e) {
       errorMessage =
@@ -1130,7 +1184,9 @@ class NData extends ChangeNotifier {
   // =========================================================
 
   Future<void> loadFollowing() async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return;
     }
 
@@ -1138,12 +1194,11 @@ class NData extends ChangeNotifier {
       final rows = await supabase
           .from('follows')
           .select(
-            'following_id, '
-            'public_profiles(username)',
+            'following_id, public_profiles(username)',
           )
           .eq(
             'follower_id',
-            userId!,
+            currentUserId,
           );
 
       following.clear();
@@ -1155,21 +1210,29 @@ class NData extends ChangeNotifier {
         final value = profile['username'];
 
         if (value != null) {
-          following.add(
-            value.toString(),
-          );
+          final clean = value.toString().trim();
+
+          if (clean.isNotEmpty) {
+            following.add(clean);
+          }
         }
       }
 
       notifyListeners();
     } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'N loadFollowing relation error: $e',
+        );
+      }
+
       try {
         final rows = await supabase
             .from('follows')
             .select('following_id')
             .eq(
               'follower_id',
-              userId!,
+              currentUserId,
             );
 
         following.clear();
@@ -1182,29 +1245,36 @@ class NData extends ChangeNotifier {
             continue;
           }
 
-          final profile = await supabase
-              .from('public_profiles')
-              .select('username')
-              .eq('id', id)
-              .maybeSingle();
+          try {
+            final profile = await supabase
+                .from('public_profiles')
+                .select('username')
+                .eq('id', id)
+                .maybeSingle();
 
-          final value =
-              profile?['username'];
+            final value =
+                profile?['username'];
 
-          if (value != null) {
-            following.add(
-              value.toString(),
-            );
+            if (value != null) {
+              final clean = value.toString().trim();
+
+              if (clean.isNotEmpty) {
+                following.add(clean);
+              }
+            }
+          } catch (profileError) {
+            if (kDebugMode) {
+              debugPrint(
+                'N following profile error: '
+                '$profileError',
+              );
+            }
           }
         }
 
         notifyListeners();
       } catch (fallbackError) {
         if (kDebugMode) {
-          debugPrint(
-            'N loadFollowing error: $e',
-          );
-
           debugPrint(
             'N loadFollowing fallback error: '
             '$fallbackError',
@@ -1221,7 +1291,12 @@ class NData extends ChangeNotifier {
   Future<void> follow(
     String user,
   ) async {
-    if (userId == null || user == username) {
+    final currentUserId = userId;
+    final cleanUser = user.trim();
+
+    if (currentUserId == null ||
+        cleanUser.isEmpty ||
+        cleanUser == username) {
       return;
     }
 
@@ -1229,7 +1304,7 @@ class NData extends ChangeNotifier {
       final target = await supabase
           .from('public_profiles')
           .select('id, username')
-          .eq('username', user)
+          .eq('username', cleanUser)
           .maybeSingle();
 
       if (target == null) {
@@ -1239,31 +1314,38 @@ class NData extends ChangeNotifier {
       }
 
       final targetId =
-          target['id'].toString();
+          target['id']?.toString();
 
-      if (following.contains(user)) {
+      if (targetId == null || targetId.isEmpty) {
+        errorMessage = 'معرف المستخدم غير صالح';
+        notifyListeners();
+        return;
+      }
+
+      if (following.contains(cleanUser)) {
         await supabase
             .from('follows')
             .delete()
             .eq(
               'follower_id',
-              userId!,
+              currentUserId,
             )
             .eq(
               'following_id',
               targetId,
             );
 
-        following.remove(user);
+        following.remove(cleanUser);
       } else {
         await supabase.from('follows').insert({
-          'follower_id': userId,
+          'follower_id': currentUserId,
           'following_id': targetId,
         });
 
-        following.add(user);
+        following.add(cleanUser);
       }
 
+      errorMessage = null;
       notifyListeners();
     } on PostgrestException catch (e) {
       errorMessage =
@@ -1295,7 +1377,9 @@ class NData extends ChangeNotifier {
   // =========================================================
 
   Future<void> loadConversations() async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return;
     }
 
@@ -1305,56 +1389,116 @@ class NData extends ChangeNotifier {
           .select('conversation_id')
           .eq(
             'user_id',
-            userId!,
+            currentUserId,
           );
 
       messages.clear();
 
       for (final membership in memberships) {
         final conversationId =
-            membership['conversation_id'].toString();
+            membership['conversation_id']?.toString();
 
-        final rows = await supabase
-            .from('messages')
-            .select(
-              '*, profiles!messages_sender_id_fkey(username)',
-            )
-            .eq(
-              'conversation_id',
-              conversationId,
-            )
-            .order(
-              'created_at',
-              ascending: true,
+        if (conversationId == null ||
+            conversationId.isEmpty) {
+          continue;
+        }
+
+        List<dynamic> rows;
+
+        try {
+          rows = await supabase
+              .from('messages')
+              .select(
+                '*, profiles!messages_sender_id_fkey(username)',
+              )
+              .eq(
+                'conversation_id',
+                conversationId,
+              )
+              .order(
+                'created_at',
+                ascending: true,
+              );
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint(
+              'N messages relation error: $e',
             );
+          }
+
+          rows = await supabase
+              .from('messages')
+              .select()
+              .eq(
+                'conversation_id',
+                conversationId,
+              )
+              .order(
+                'created_at',
+                ascending: true,
+              );
+        }
 
         for (final row in rows) {
           final map =
               Map<String, dynamic>.from(row);
 
-          final message =
-              NMessage.fromMap(map);
-
           final profile =
               _mapFromDynamic(map['profiles']);
 
-          final sender =
+          String? sender =
               profile['username']?.toString();
 
+          // fallback إلى sender_id
+          if (sender == null || sender.trim().isEmpty) {
+            final senderId =
+                map['sender_id']?.toString();
+
+            if (senderId != null &&
+                senderId.isNotEmpty) {
+              try {
+                final senderProfile =
+                    await supabase
+                        .from('public_profiles')
+                        .select('username')
+                        .eq('id', senderId)
+                        .maybeSingle();
+
+                sender =
+                    senderProfile?['username']
+                        ?.toString();
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint(
+                    'N sender profile error: $e',
+                  );
+                }
+              }
+            }
+          }
+
           if (sender == null ||
-              sender.isEmpty) {
+              sender.trim().isEmpty) {
             continue;
           }
+
+          map['profiles'] = {
+            'username': sender,
+          };
+
+          final message =
+              NMessage.fromMap(map);
 
           messages
               .putIfAbsent(
                 sender,
-                () => [],
+                () => <NMessage>[],
               )
               .add(message);
         }
       }
 
+      errorMessage = null;
       notifyListeners();
     } catch (e) {
       errorMessage =
@@ -1377,7 +1521,10 @@ class NData extends ChangeNotifier {
   Future<String?> _getConversationId(
     String otherUserId,
   ) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null ||
+        otherUserId.isEmpty) {
       return null;
     }
 
@@ -1387,7 +1534,7 @@ class NData extends ChangeNotifier {
           .select('conversation_id')
           .eq(
             'user_id',
-            userId!,
+            currentUserId,
           );
 
       final otherRows = await supabase
@@ -1401,15 +1548,16 @@ class NData extends ChangeNotifier {
       final mine = myRows
           .map(
             (row) =>
-                row['conversation_id'].toString(),
+                row['conversation_id']?.toString(),
           )
+          .whereType<String>()
           .toSet();
 
       for (final row in otherRows) {
         final id =
-            row['conversation_id'].toString();
+            row['conversation_id']?.toString();
 
-        if (mine.contains(id)) {
+        if (id != null && mine.contains(id)) {
           return id;
         }
       }
@@ -1433,11 +1581,19 @@ class NData extends ChangeNotifier {
   Future<String?> _createConversation(
     String otherUserId,
   ) async {
-    if (userId == null) {
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
       return null;
     }
 
-    if (otherUserId == userId) {
+    if (otherUserId.isEmpty) {
+      errorMessage = 'معرف المستخدم غير صالح';
+      notifyListeners();
+      return null;
+    }
+
+    if (otherUserId == currentUserId) {
       errorMessage =
           'لا يمكنك إنشاء محادثة مع نفسك';
       notifyListeners();
@@ -1452,72 +1608,22 @@ class NData extends ChangeNotifier {
         },
       );
 
-      if (result == null) {
-        errorMessage =
-            'تعذر إنشاء المحادثة';
-        notifyListeners();
-        return null;
+      final parsedId =
+          _extractConversationId(result);
+
+      if (parsedId != null) {
+        return parsedId;
       }
 
-      if (result is String) {
-        final id = result.trim();
-
-        if (id.isNotEmpty) {
-          return id;
-        }
-      }
-
-      if (result is Map) {
-        final id =
-            result['id'] ??
-            result['conversation_id'];
-
-        if (id != null) {
-          final value =
-              id.toString().trim();
-
-          if (value.isNotEmpty) {
-            return value;
-          }
-        }
-      }
-
-      if (result is List &&
-          result.isNotEmpty) {
-        final first = result.first;
-
-        if (first is Map) {
-          final id =
-              first['id'] ??
-              first['conversation_id'];
-
-          if (id != null) {
-            final value =
-                id.toString().trim();
-
-            if (value.isNotEmpty) {
-              return value;
-            }
-          }
-        }
-
-        if (first != null) {
-          final value =
-              first.toString().trim();
-
-          if (value.isNotEmpty) {
-            return value;
-          }
-        }
-      }
-
-      final conversation =
+      // إذا كانت الدالة أعادت null أو قيمة غير متوقعة،
+      // نبحث عن المحادثة الموجودة.
+      final existing =
           await _getConversationId(
         otherUserId,
       );
 
-      if (conversation != null) {
-        return conversation;
+      if (existing != null) {
+        return existing;
       }
 
       errorMessage =
@@ -1527,6 +1633,16 @@ class NData extends ChangeNotifier {
 
       return null;
     } on PostgrestException catch (e) {
+      // قد تكون المحادثة موجودة أصلًا.
+      final existing =
+          await _getConversationId(
+        otherUserId,
+      );
+
+      if (existing != null) {
+        return existing;
+      }
+
       errorMessage =
           'تعذر إنشاء المحادثة: ${e.message}';
 
@@ -1541,6 +1657,15 @@ class NData extends ChangeNotifier {
 
       return null;
     } catch (e) {
+      final existing =
+          await _getConversationId(
+        otherUserId,
+      );
+
+      if (existing != null) {
+        return existing;
+      }
+
       errorMessage =
           'تعذر إنشاء المحادثة';
 
@@ -1564,7 +1689,11 @@ class NData extends ChangeNotifier {
     String user,
     String text,
   ) async {
-    if (userId == null) {
+    final currentUserId = userId;
+    final cleanUser = user.trim();
+    final clean = text.trim();
+
+    if (currentUserId == null) {
       errorMessage =
           'يجب تسجيل الدخول أولاً';
       notifyListeners();
@@ -1578,7 +1707,12 @@ class NData extends ChangeNotifier {
       return;
     }
 
-    final clean = text.trim();
+    if (cleanUser.isEmpty) {
+      errorMessage =
+          'اسم المستخدم غير صالح';
+      notifyListeners();
+      return;
+    }
 
     if (clean.isEmpty) {
       errorMessage =
@@ -1600,7 +1734,7 @@ class NData extends ChangeNotifier {
           .select('id, username, name')
           .eq(
             'username',
-            user,
+            cleanUser,
           )
           .maybeSingle();
 
@@ -1612,9 +1746,17 @@ class NData extends ChangeNotifier {
       }
 
       final otherUserId =
-          target['id'].toString();
+          target['id']?.toString();
 
-      if (otherUserId == userId) {
+      if (otherUserId == null ||
+          otherUserId.isEmpty) {
+        errorMessage =
+            'معرف المستخدم غير صالح';
+        notifyListeners();
+        return;
+      }
+
+      if (otherUserId == currentUserId) {
         errorMessage =
             'لا يمكنك إرسال رسالة إلى نفسك';
         notifyListeners();
@@ -1632,14 +1774,14 @@ class NData extends ChangeNotifier {
 
       await supabase.from('messages').insert({
         'conversation_id': conversationId,
-        'sender_id': userId,
+        'sender_id': currentUserId,
         'text': clean,
       });
 
       final list =
           messages.putIfAbsent(
-        user,
-        () => [],
+        cleanUser,
+        () => <NMessage>[],
       );
 
       final now = DateTime.now();
@@ -1693,15 +1835,13 @@ class NData extends ChangeNotifier {
         messages.entries.toList();
 
     items.sort((a, b) {
-      final aTime =
-          a.value.isEmpty
-              ? ''
-              : a.value.last.time;
+      final aTime = a.value.isEmpty
+          ? ''
+          : a.value.last.time;
 
-      final bTime =
-          b.value.isEmpty
-              ? ''
-              : b.value.last.time;
+      final bTime = b.value.isEmpty
+          ? ''
+          : b.value.last.time;
 
       return bTime.compareTo(aTime);
     });
@@ -1716,8 +1856,12 @@ class NData extends ChangeNotifier {
   Future<void> _updateProfile(
     Map<String, dynamic> values,
   ) async {
-    if (userId == null) {
-      return;
+    final currentUserId = userId;
+
+    if (currentUserId == null) {
+      throw StateError(
+        'User is not authenticated',
+      );
     }
 
     await supabase
@@ -1725,7 +1869,7 @@ class NData extends ChangeNotifier {
         .update(values)
         .eq(
           'id',
-          userId!,
+          currentUserId,
         );
   }
 
@@ -1739,6 +1883,7 @@ class NData extends ChangeNotifier {
     final oldValue = privateAccount;
 
     privateAccount = value;
+    notifyListeners();
 
     try {
       await _updateProfile({
@@ -1752,9 +1897,9 @@ class NData extends ChangeNotifier {
           'N privateAccount error: $e',
         );
       }
-    }
 
-    notifyListeners();
+      notifyListeners();
+    }
   }
 
   // =========================================================
@@ -1767,6 +1912,7 @@ class NData extends ChangeNotifier {
     final oldValue = activityStatus;
 
     activityStatus = value;
+    notifyListeners();
 
     try {
       await _updateProfile({
@@ -1780,9 +1926,9 @@ class NData extends ChangeNotifier {
           'N activityStatus error: $e',
         );
       }
-    }
 
-    notifyListeners();
+      notifyListeners();
+    }
   }
 
   // =========================================================
@@ -1795,6 +1941,7 @@ class NData extends ChangeNotifier {
     final oldValue = allowMessages;
 
     allowMessages = value;
+    notifyListeners();
 
     try {
       await _updateProfile({
@@ -1808,9 +1955,9 @@ class NData extends ChangeNotifier {
           'N allowMessages error: $e',
         );
       }
-    }
 
-    notifyListeners();
+      notifyListeners();
+    }
   }
 
   // =========================================================
@@ -1823,6 +1970,7 @@ class NData extends ChangeNotifier {
     final oldValue = notifications;
 
     notifications = value;
+    notifyListeners();
 
     try {
       await _updateProfile({
@@ -1836,9 +1984,9 @@ class NData extends ChangeNotifier {
           'N notifications error: $e',
         );
       }
-    }
 
-    notifyListeners();
+      notifyListeners();
+    }
   }
 
   // =========================================================
@@ -1851,6 +1999,7 @@ class NData extends ChangeNotifier {
     final oldValue = sounds;
 
     sounds = value;
+    notifyListeners();
 
     try {
       await _updateProfile({
@@ -1864,9 +2013,9 @@ class NData extends ChangeNotifier {
           'N sounds error: $e',
         );
       }
-    }
 
-    notifyListeners();
+      notifyListeners();
+    }
   }
 }
 
@@ -1882,10 +2031,59 @@ Map<String, dynamic> _mapFromDynamic(
   }
 
   if (value is Map) {
-    return Map<String, dynamic>.from(value);
+    try {
+      return Map<String, dynamic>.from(value);
+    } catch (_) {
+      return <String, dynamic>{};
+    }
   }
 
   return <String, dynamic>{};
+}
+
+// =========================================================
+// EXTRACT PROFILE
+// =========================================================
+
+Map<String, dynamic> _extractProfile(
+  Map<String, dynamic> map,
+) {
+  final publicProfile =
+      _mapFromDynamic(map['public_profiles']);
+
+  if (publicProfile.isNotEmpty) {
+    return publicProfile;
+  }
+
+  final profile =
+      _mapFromDynamic(map['profiles']);
+
+  if (profile.isNotEmpty) {
+    return profile;
+  }
+
+  return <String, dynamic>{};
+}
+
+// =========================================================
+// STRING HELPER
+// =========================================================
+
+String _stringValue(
+  dynamic value, {
+  required String fallback,
+}) {
+  if (value == null) {
+    return fallback;
+  }
+
+  final text = value.toString().trim();
+
+  if (text.isEmpty) {
+    return fallback;
+  }
+
+  return text;
 }
 
 // =========================================================
@@ -1906,6 +2104,70 @@ String? _nullableString(
   }
 
   return text;
+}
+
+// =========================================================
+// CONVERSATION ID HELPER
+// =========================================================
+
+String? _extractConversationId(
+  dynamic result,
+) {
+  if (result == null) {
+    return null;
+  }
+
+  if (result is String) {
+    final value = result.trim();
+
+    return value.isEmpty ? null : value;
+  }
+
+  if (result is Map) {
+    final id =
+        result['id'] ??
+        result['conversation_id'];
+
+    if (id != null) {
+      final value = id.toString().trim();
+
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  if (result is List &&
+      result.isNotEmpty) {
+    final first = result.first;
+
+    if (first is Map) {
+      final id =
+          first['id'] ??
+          first['conversation_id'];
+
+      if (id != null) {
+        final value = id.toString().trim();
+
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
+    }
+
+    if (first != null) {
+      final value = first.toString().trim();
+
+      if (value.isNotEmpty &&
+          value != 'null') {
+        return value;
+      }
+    }
+  }
+
+  return null;
 }
 
 // =========================================================
