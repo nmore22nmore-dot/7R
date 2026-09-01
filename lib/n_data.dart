@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -150,6 +153,9 @@ class NData extends ChangeNotifier {
 
   int supporterLevel = 0;
   int coins = 0;
+  bool isAdmin = false;
+  bool isSuspended = false;
+  DateTime? suspendedUntil;
 
   String? avatarUrl;
 
@@ -160,6 +166,7 @@ class NData extends ChangeNotifier {
       <String, List<NMessage>>{};
 
   bool loading = false;
+  StreamSubscription<AuthState>? _authSubscription;
   String? errorMessage;
 
   bool get adultAllowed => age >= 21;
@@ -184,6 +191,22 @@ class NData extends ChangeNotifier {
       }
 
       await loadCurrentUser();
+
+      _authSubscription ??= supabase.auth.onAuthStateChange.listen((state) async {
+        if (state.event == AuthChangeEvent.signedOut) {
+          await _clearLocalSession();
+          return;
+        }
+        if (state.event == AuthChangeEvent.signedIn ||
+            state.event == AuthChangeEvent.tokenRefreshed ||
+            state.event == AuthChangeEvent.userUpdated) {
+          try {
+            await loadCurrentUser();
+          } catch (e) {
+            if (kDebugMode) debugPrint('N auth refresh error: $e');
+          }
+        }
+      });
     } catch (e) {
       loggedIn = false;
       errorMessage = 'تعذر تهيئة التطبيق';
@@ -504,6 +527,26 @@ class NData extends ChangeNotifier {
       fallback: 0,
     );
 
+    try {
+      isAdmin = (await supabase.rpc('n_is_admin')) == true;
+    } catch (_) {
+      isAdmin = false;
+    }
+
+    try {
+      final suspension = await supabase.rpc('n_my_suspension');
+      if (suspension is Map && suspension.isNotEmpty) {
+        isSuspended = true;
+        suspendedUntil = DateTime.tryParse((suspension['suspended_until'] ?? '').toString());
+      } else {
+        isSuspended = false;
+        suspendedUntil = null;
+      }
+    } catch (_) {
+      isSuspended = false;
+      suspendedUntil = null;
+    }
+
     loggedIn = true;
 
     await Future.wait([
@@ -554,6 +597,36 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
+  // SESSION CLEAR
+  // =========================================================
+
+  Future<void> _clearLocalSession() async {
+    name = 'مستخدم N';
+    username = 'n_user';
+    email = '';
+    age = 25;
+    loggedIn = false;
+    isAdmin = false;
+    isSuspended = false;
+    suspendedUntil = null;
+    supporterLevel = 0;
+    coins = 0;
+    avatarUrl = null;
+    badges.clear();
+    posts.clear();
+    following.clear();
+    messages.clear();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _authSubscription = null;
+    super.dispose();
+  }
+
+  // =========================================================
   // LOGOUT
   // =========================================================
 
@@ -578,6 +651,7 @@ class NData extends ChangeNotifier {
     allowMessages = true;
     notifications = true;
     sounds = true;
+    isAdmin = false;
 
     supporterLevel = 0;
     coins = 0;
@@ -591,6 +665,68 @@ class NData extends ChangeNotifier {
     errorMessage = null;
 
     notifyListeners();
+  }
+
+  // =========================================================
+  // WALLET / GIFTS
+  // =========================================================
+
+  Future<Map<String, dynamic>> adminOverview() async {
+    final result = await supabase.rpc('n_admin_overview');
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> adminReports() async {
+    final result = await supabase.rpc('n_admin_reports', params: {'limit_count': 50});
+    if (result is! List) return <Map<String, dynamic>>[];
+    return result.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+  }
+
+  Future<bool> adminSetReportStatus(String reportId, String status) async {
+    try {
+      await supabase.rpc('n_admin_set_report_status', params: {
+        'report_id': reportId,
+        'new_status': status,
+      });
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('N admin status error: $e');
+      return false;
+    }
+  }
+
+  Future<void> refreshWallet() async {
+    if (userId == null) return;
+    try {
+      final row = await supabase
+          .from('profiles')
+          .select('coins, supporter_level')
+          .eq('id', userId!)
+          .single();
+      coins = _toInt(row['coins'], fallback: coins);
+      supporterLevel = _toInt(row['supporter_level'], fallback: supporterLevel);
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('N wallet refresh error: $e');
+    }
+  }
+
+  Future<bool> sendGift({required String recipientUsername, required String giftId}) async {
+    if (userId == null || recipientUsername.trim().isEmpty) return false;
+    try {
+      final result = await supabase.rpc('n_send_gift', params: {
+        'recipient_username': recipientUsername.trim().replaceFirst('@', '').toLowerCase(),
+        'gift_id': giftId,
+      });
+      coins = _toInt(result, fallback: coins);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      errorMessage = e.toString().replaceFirst('PostgrestException(message: ', '').split(', code:').first;
+      if (kDebugMode) debugPrint('N send gift error: $e');
+      notifyListeners();
+      return false;
+    }
   }
 
   // =========================================================
@@ -769,6 +905,107 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
+  // VIDEO UPLOAD
+  // =========================================================
+
+  Future<void> registerView(NPost post) async {
+    if (userId == null || post.id.isEmpty) return;
+    try {
+      await supabase.rpc('register_post_view', params: {'target_post_id': post.id});
+    } catch (e) {
+      if (kDebugMode) debugPrint('N registerView error: $e');
+    }
+  }
+
+
+  Future<String?> uploadImage(File file) async {
+    final currentUserId = userId;
+    if (currentUserId == null) {
+      errorMessage = 'يجب تسجيل الدخول أولاً';
+      notifyListeners();
+      return null;
+    }
+
+    final path = '$currentUserId/covers/${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    try {
+      await supabase.storage.from('images').upload(
+        path,
+        file,
+        fileOptions: const FileOptions(
+          contentType: 'image/jpeg',
+          upsert: false,
+        ),
+      );
+      errorMessage = null;
+      return supabase.storage.from('images').getPublicUrl(path);
+    } on StorageException catch (e) {
+      errorMessage = 'تعذر رفع الغلاف: ${e.message}';
+      if (kDebugMode) debugPrint('N uploadImage StorageException: ${e.message}');
+      notifyListeners();
+      return null;
+    } catch (e) {
+      errorMessage = 'تعذر رفع الغلاف';
+      if (kDebugMode) debugPrint('N uploadImage error: $e');
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<String?> uploadVideo(File file) async {
+    final currentUserId = userId;
+    if (currentUserId == null) {
+      errorMessage = 'يجب تسجيل الدخول أولاً';
+      notifyListeners();
+      return null;
+    }
+
+    final extension = _videoExtension(file.path);
+    final path = '$currentUserId/${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+    try {
+      await supabase.storage.from('videos').upload(
+        path,
+        file,
+        fileOptions: FileOptions(
+          contentType: _videoContentType(extension),
+          upsert: false,
+        ),
+      );
+
+      errorMessage = null;
+      return supabase.storage.from('videos').getPublicUrl(path);
+    } on StorageException catch (e) {
+      errorMessage = 'تعذر رفع الفيديو: ${e.message}';
+      if (kDebugMode) debugPrint('N uploadVideo StorageException: ${e.message}');
+      notifyListeners();
+      return null;
+    } catch (e) {
+      errorMessage = 'تعذر رفع الفيديو';
+      if (kDebugMode) debugPrint('N uploadVideo error: $e');
+      notifyListeners();
+      return null;
+    }
+  }
+
+  String _videoExtension(String path) {
+    final value = path.split('.').last.toLowerCase();
+    const allowed = {'mp4', 'mov', 'm4v', 'webm'};
+    return allowed.contains(value) ? value : 'mp4';
+  }
+
+  String _videoContentType(String extension) {
+    switch (extension) {
+      case 'mov':
+        return 'video/quicktime';
+      case 'webm':
+        return 'video/webm';
+      default:
+        return 'video/mp4';
+    }
+  }
+
+  // =========================================================
   // CREATE POST
   // =========================================================
 
@@ -865,6 +1102,66 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
+  // BLOCK / REPORT
+  // =========================================================
+
+  Future<bool> blockUser(String targetUserId) async {
+    final me = userId;
+    if (me == null || targetUserId.isEmpty || me == targetUserId) return false;
+    try {
+      await supabase.from('user_blocks').upsert({
+        'blocker_id': me,
+        'blocked_id': targetUserId,
+      });
+      return true;
+    } catch (e) {
+      errorMessage = 'تعذر حظر المستخدم';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> unblockUser(String targetUserId) async {
+    final me = userId;
+    if (me == null || targetUserId.isEmpty) return false;
+    try {
+      await supabase.from('user_blocks')
+          .delete()
+          .eq('blocker_id', me)
+          .eq('blocked_id', targetUserId);
+      return true;
+    } catch (e) {
+      errorMessage = 'تعذر إلغاء الحظر';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> reportContent({
+    String? targetUserId,
+    String? postId,
+    required String reason,
+    String? details,
+  }) async {
+    final me = userId;
+    if (me == null) return false;
+    try {
+      await supabase.from('content_reports').insert({
+        'reporter_id': me,
+        'reported_user_id': targetUserId,
+        'post_id': postId,
+        'reason': reason,
+        'details': details?.trim().isEmpty == true ? null : details?.trim(),
+      });
+      return true;
+    } catch (e) {
+      errorMessage = 'تعذر إرسال البلاغ';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // =========================================================
   // DELETE POST
   // =========================================================
 
@@ -937,6 +1234,32 @@ class NData extends ChangeNotifier {
 
       return true;
     }).toList();
+  }
+
+  // =========================================================
+  // FOLLOWER COUNT
+  // =========================================================
+
+  Future<int> followerCount(String user) async {
+    final cleanUser = user.trim();
+    if (cleanUser.isEmpty) return 0;
+    try {
+      final target = await supabase
+          .from('public_profiles')
+          .select('id')
+          .eq('username', cleanUser)
+          .maybeSingle();
+      final id = target?['id']?.toString();
+      if (id == null || id.isEmpty) return 0;
+      final rows = await supabase
+          .from('follows')
+          .select('follower_id')
+          .eq('following_id', id);
+      return rows.length;
+    } catch (e) {
+      if (kDebugMode) debugPrint('N followerCount error: $e');
+      return 0;
+    }
   }
 
   // =========================================================

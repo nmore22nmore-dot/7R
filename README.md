@@ -4,7 +4,7 @@
 
 ## الحالة الحالية
 
-هذه النسخة هي نسخة Flutter قابلة للبناء وتحتوي على واجهة وتجربة محلية للتطبيق.
+هذه النسخة هي أساس Flutter متكامل مع Supabase، وتحتوي على واجهات وتجارب مرتبطة بالـBackend حيث تم تنفيذها، مع نقاط إصدار موثقة تتطلب إعداد البيئة الإنتاجية.
 
 ### الموجود حاليًا
 
@@ -53,3 +53,25 @@
 flutter pub get
 flutter analyze
 flutter build apk --release
+
+
+## المرحلة المنفذة — Video Core
+
+- Feed فيديو عمودي بملء الشاشة.
+- تشغيل تلقائي للفيديو النشط وتكرار التشغيل.
+- إيقاف الفيديو عند الانتقال لفيديو آخر.
+- كتم/تشغيل الصوت.
+- إعجاب، تعليقات، حفظ، متابعة ومشاركة حقيقية.
+- اختيار فيديو من المعرض أو التصوير بالكاميرا.
+- معاينة الفيديو قبل النشر.
+- رفع الفيديو إلى Supabase Storage داخل مجلد المستخدم.
+- إنشاء منشور فيديو بعد نجاح الرفع.
+- عداد مشاهدات مبدئي عبر RPC مع جدول post_views.
+- سياسات Storage أساسية تمنع رفع الملفات داخل مجلد مستخدم آخر.
+
+> قبل الإصدار النهائي يجب تشغيل `flutter pub get` و`flutter analyze` و`flutter test` و`flutter build apk --release` في بيئة Flutter فعلية، ثم تطبيق `supabase/schema.sql` على مشروع Supabase.
+
+## Phase 11 — Realtime inbox polish
+- Notifications subscribe to Supabase Realtime inserts for the signed-in user.
+- Notification failures now expose the real retry state instead of a misleading schema-only message.
+- `supabase/schema.sql` enables `notifications` in `supabase_realtime` when available.

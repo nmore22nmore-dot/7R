@@ -84,17 +84,20 @@ workflows:
           flutter clean
           flutter pub get
 
-      - name: Analyze
+      - name: Analyze and test
         script: |
           set -e
 
           flutter analyze
+          flutter test
 
       - name: Build APK
         script: |
           set -e
 
           flutter build apk --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
@@ -107,6 +110,10 @@ workflows:
           echo "======================================"
 
           ls -lh "$APK"
+          sha256sum "$APK" | tee "$APK.sha256"
+          test -s "$APK.sha256"
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/app-release.apk.sha256
+      - build/symbols/**

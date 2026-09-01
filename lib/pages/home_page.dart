@@ -54,14 +54,16 @@ class _StoriesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stories = const [
-      ('قصتك', true),
-      ('N Official', false),
-      ('Ahmed', false),
-      ('Sara', false),
-      ('Mohamed', false),
-      ('Noor', false),
-    ];
+    final authors = <String>[];
+    for (final post in data.visiblePosts()) {
+      final username = post.username.trim();
+      if (username.isNotEmpty && !authors.contains(username)) {
+        authors.add(username);
+      }
+      if (authors.length >= 12) break;
+    }
+
+    final stories = <(String, bool)>[('قصتك', true), ...authors.map((name) => (name, false))];
 
     return SizedBox(
       height: 128,
@@ -73,7 +75,6 @@ class _StoriesSection extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, index) {
           final story = stories[index];
-
           return SizedBox(
             width: 76,
             child: Column(
@@ -82,13 +83,10 @@ class _StoriesSection extends StatelessWidget {
                   width: 68,
                   height: 68,
                   padding: const EdgeInsets.all(2.5),
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF00C8FF),
-                        Color(0xFFFF287A),
-                      ],
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF00C8FF), Color(0xFFFF287A)],
                     ),
                   ),
                   child: Container(
@@ -97,16 +95,8 @@ class _StoriesSection extends StatelessWidget {
                       color: Color(0xFF11141C),
                     ),
                     child: story.$2
-                        ? const Icon(
-                            Icons.add,
-                            size: 30,
-                            color: Colors.white,
-                          )
-                        : const Icon(
-                            Icons.person,
-                            size: 30,
-                            color: Colors.white70,
-                          ),
+                        ? const Icon(Icons.add, size: 30, color: Colors.white)
+                        : const Icon(Icons.person, size: 30, color: Colors.white70),
                   ),
                 ),
                 const SizedBox(height: 7),
@@ -115,10 +105,7 @@ class _StoriesSection extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white,
-                  ),
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
                 ),
               ],
             ),
