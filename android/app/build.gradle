@@ -18,20 +18,14 @@ android {
 
     signingConfigs {
         release {
-            if (System.getenv("CI")) {
-                storeFile file(
-                    System.getenv("CM_KEYSTORE_PATH")
-                )
+            def keystorePath = System.getenv("CM_KEYSTORE_PATH")
+
+            if (keystorePath != null && !keystorePath.trim().isEmpty()) {
+                storeFile file(keystorePath)
                 storeType "PKCS12"
-                storePassword System.getenv(
-                    "CM_KEYSTORE_PASSWORD"
-                )
-                keyAlias System.getenv(
-                    "CM_KEY_ALIAS"
-                )
-                keyPassword System.getenv(
-                    "CM_KEY_PASSWORD"
-                )
+                storePassword System.getenv("CM_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CM_KEY_ALIAS")
+                keyPassword System.getenv("CM_KEY_PASSWORD")
             }
         }
     }
