@@ -1,0 +1,49 @@
+name: Replace repository with Phase 28
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Phase 28
+        shell: bash
+        run: |
+          set -e
+
+          ZIP="N-production-phase28-security-hardening.zip"
+
+          test -f "$ZIP"
+
+          rm -rf /tmp/phase28
+          mkdir -p /tmp/phase28
+
+          unzip -q "$ZIP" "n25/*" -d /tmp/phase28
+
+          test -f /tmp/phase28/n25/pubspec.yaml
+          test -d /tmp/phase28/n25/lib
+          test -d /tmp/phase28/n25/android
+
+          git rm -r --ignore-unmatch .
+
+          cp -a /tmp/phase28/n25/. .
+
+          rm -f "$ZIP"
+
+          git add -A
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git commit -m "Replace repository with Phase 28" || exit 0
+          git push
