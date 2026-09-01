@@ -8,16 +8,19 @@ workflows:
       flutter: stable
       java: 17
 
-      android_signing:
-        - n_android_keystore
-
       groups:
         - N_SUPABASE
+        - keystore_credentials
 
     scripts:
       - name: Configure Android
         script: |
           echo "flutter.sdk=$FLUTTER_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+
+      - name: Set up Android keystore
+        script: |
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_KEYSTORE_PATH"
+          chmod 600 "$CM_KEYSTORE_PATH"
 
       - name: Get packages
         script: |
