@@ -13,28 +13,100 @@ workflows:
         - keystore_credentials
 
     scripts:
+      - name: Verify environment
+        script: |
+          set -e
+
+          echo "===== N BUILD ENVIRONMENT ====="
+
+          test -n "$CM_KEYSTORE" || {
+            echo "ERROR: CM_KEYSTORE is empty."
+            exit 1
+          }
+
+          test -n "$CM_KEYSTORE_PASSWORD" || {
+            echo "ERROR: CM_KEYSTORE_PASSWORD is empty."
+            exit 1
+          }
+
+          test -n "$CM_KEY_ALIAS" || {
+            echo "ERROR: CM_KEY_ALIAS is empty."
+            exit 1
+          }
+
+          test -n "$CM_KEY_PASSWORD" || {
+            echo "ERROR: CM_KEY_PASSWORD is empty."
+            exit 1
+          }
+
+          test -n "$SUPABASE_URL" || {
+            echo "ERROR: SUPABASE_URL is empty."
+            exit 1
+          }
+
+          test -n "$SUPABASE_PUBLISHABLE_KEY" || {
+            echo "ERROR: SUPABASE_PUBLISHABLE_KEY is empty."
+            exit 1
+          }
+
+          echo "Required environment variables are available."
+
       - name: Configure Android
         script: |
+          set -e
+
           echo "flutter.sdk=$FLUTTER_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+
+          echo "Android configuration prepared."
 
       - name: Prepare Android keystore
         script: |
-          echo "$CM_KEYSTORE" | base64 --decode > "$CM_KEYSTORE_PATH"
-          chmod 600 "$CM_KEYSTORE_PATH"
+          set -e
+
+          KEYSTORE_PATH="$CM_BUILD_DIR/n-release.p12"
+
+          echo "$CM_KEYSTORE" | base64 --decode > "$KEYSTORE_PATH"
+
+          test -s "$KEYSTORE_PATH"
+
+          chmod 600 "$KEYSTORE_PATH"
+
+          export CM_KEYSTORE_PATH="$KEYSTORE_PATH"
+
+          echo "CM_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$CM_ENV"
+
+          echo "Android keystore prepared successfully."
 
       - name: Get packages
         script: |
+          set -e
+
+          flutter clean
           flutter pub get
 
       - name: Analyze
         script: |
+          set -e
+
           flutter analyze
 
       - name: Build APK
         script: |
+          set -e
+
           flutter build apk --release \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+
+          test -f "$APK"
+
+          echo "======================================"
+          echo "N APK CREATED SUCCESSFULLY"
+          echo "======================================"
+
+          ls -lh "$APK"
 
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
