@@ -1102,6 +1102,65 @@ class NData extends ChangeNotifier {
   }
 
   // =========================================================
+  // LIVE STREAMS
+  // =========================================================
+
+  Future<List<Map<String, dynamic>>> loadLiveStreams() async {
+    try {
+      final rows = await supabase
+          .from('live_streams')
+          .select('id,user_id,title,room_name,created_at,profiles!live_streams_user_id_fkey(username,name,avatar_url,verified)')
+          .eq('status', 'live')
+          .order('created_at', ascending: false)
+          .limit(50);
+      return List<Map<String, dynamic>>.from(rows);
+    } catch (e) {
+      if (kDebugMode) debugPrint('N loadLiveStreams error: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<Map<String, dynamic>?> startLive({required String title}) async {
+    final currentUserId = userId;
+    if (currentUserId == null) {
+      errorMessage = 'يجب تسجيل الدخول أولاً';
+      notifyListeners();
+      return null;
+    }
+    final cleanTitle = title.trim().isEmpty ? 'بث N مباشر' : title.trim();
+    try {
+      final room = 'n_${currentUserId}_${DateTime.now().millisecondsSinceEpoch}';
+      final row = await supabase.from('live_streams').insert({
+        'user_id': currentUserId,
+        'title': cleanTitle,
+        'room_name': room,
+        'status': 'live',
+      }).select('id,user_id,title,room_name,created_at').single();
+      return Map<String, dynamic>.from(row);
+    } catch (e) {
+      errorMessage = 'تعذر بدء البث المباشر';
+      if (kDebugMode) debugPrint('N startLive error: $e');
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> endLive(String liveId) async {
+    final currentUserId = userId;
+    if (currentUserId == null || liveId.isEmpty) return false;
+    try {
+      await supabase.from('live_streams').update({
+        'status': 'ended',
+        'ended_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', liveId).eq('user_id', currentUserId);
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('N endLive error: $e');
+      return false;
+    }
+  }
+
+  // =========================================================
   // BLOCK / REPORT
   // =========================================================
 

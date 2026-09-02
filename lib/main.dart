@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
@@ -1528,9 +1529,11 @@ class _CreatePageState extends State<CreatePage> {
   final ImagePicker _picker = ImagePicker();
   final caption = TextEditingController();
   XFile? selectedVideo;
+  XFile? selectedImage;
   XFile? selectedCover;
   bool adult = false;
   bool publishing = false;
+  bool imageMode = false;
   String visibility = 'عام';
 
   @override
@@ -1542,12 +1545,29 @@ class _CreatePageState extends State<CreatePage> {
   Future<void> _pickVideo({required bool camera}) async {
     final file = await _picker.pickVideo(
       source: camera ? ImageSource.camera : ImageSource.gallery,
-      maxDuration: const Duration(minutes: 5),
+      maxDuration: const Duration(minutes: 10),
     );
     if (!mounted || file == null) return;
     setState(() {
       selectedVideo = file;
+      selectedImage = null;
       selectedCover = null;
+      imageMode = false;
+    });
+  }
+
+  Future<void> _pickImage({required bool camera}) async {
+    final file = await _picker.pickImage(
+      source: camera ? ImageSource.camera : ImageSource.gallery,
+      imageQuality: 92,
+      maxWidth: 2048,
+    );
+    if (!mounted || file == null) return;
+    setState(() {
+      selectedImage = file;
+      selectedVideo = null;
+      selectedCover = null;
+      imageMode = true;
     });
   }
 
@@ -1564,8 +1584,8 @@ class _CreatePageState extends State<CreatePage> {
 
   Future<void> publish() async {
     if (publishing) return;
-    if (selectedVideo == null) {
-      _message('اختر فيديو أولاً');
+    if (selectedVideo == null && selectedImage == null) {
+      _message('اختر صورة أو فيديو أولاً');
       return;
     }
     if (adult && !data.adultAllowed) {
@@ -1581,19 +1601,29 @@ class _CreatePageState extends State<CreatePage> {
 
     setState(() => publishing = true);
     try {
-      final videoUrl = await data.uploadVideo(File(selectedVideo!.path));
-      if (!mounted) return;
-      if (videoUrl == null) {
-        _message(data.errorMessage ?? 'تعذر رفع الفيديو');
-        return;
-      }
+      String? videoUrl;
+      String? imageUrl;
 
-      String? coverUrl;
-      if (selectedCover != null) {
-        coverUrl = await data.uploadImage(File(selectedCover!.path));
+      if (selectedVideo != null) {
+        videoUrl = await data.uploadVideo(File(selectedVideo!.path));
         if (!mounted) return;
-        if (coverUrl == null) {
-          _message(data.errorMessage ?? 'تعذر رفع الغلاف');
+        if (videoUrl == null) {
+          _message(data.errorMessage ?? 'تعذر رفع الفيديو');
+          return;
+        }
+        if (selectedCover != null) {
+          imageUrl = await data.uploadImage(File(selectedCover!.path));
+          if (!mounted) return;
+          if (imageUrl == null) {
+            _message(data.errorMessage ?? 'تعذر رفع الغلاف');
+            return;
+          }
+        }
+      } else if (selectedImage != null) {
+        imageUrl = await data.uploadImage(File(selectedImage!.path));
+        if (!mounted) return;
+        if (imageUrl == null) {
+          _message(data.errorMessage ?? 'تعذر رفع الصورة');
           return;
         }
       }
@@ -1602,24 +1632,27 @@ class _CreatePageState extends State<CreatePage> {
         text,
         adult: adult,
         visibility: visibility,
-        video: true,
+        video: selectedVideo != null,
         videoUrl: videoUrl,
-        imageUrl: coverUrl,
+        imageUrl: imageUrl,
       );
       if (!mounted) return;
       if (!ok) {
-        _message(data.errorMessage ?? 'تعذر نشر الفيديو');
+        _message(data.errorMessage ?? 'تعذر نشر المنشور');
         return;
       }
 
+      final wasVideo = selectedVideo != null;
       caption.clear();
       setState(() {
         selectedVideo = null;
+        selectedImage = null;
         selectedCover = null;
         adult = false;
         visibility = 'عام';
+        imageMode = false;
       });
-      _message('تم نشر الفيديو بنجاح');
+      _message(wasVideo ? 'تم نشر الفيديو بنجاح' : 'تم نشر الصورة بنجاح');
     } finally {
       if (mounted) setState(() => publishing = false);
     }
@@ -1632,20 +1665,15 @@ class _CreatePageState extends State<CreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final hasMedia = selectedVideo != null || selectedImage != null;
     return Scaffold(
       backgroundColor: NColors.background,
       appBar: AppBar(
-        title: const Text('إنشاء فيديو'),
+        title: const Text('إنشاء على N'),
         actions: [
           TextButton(
             onPressed: publishing ? null : publish,
-            child: Text(
-              'نشر',
-              style: TextStyle(
-                color: publishing ? Colors.white38 : NColors.cyan,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            child: Text('نشر', style: TextStyle(color: publishing ? Colors.white38 : NColors.cyan, fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -1654,46 +1682,31 @@ class _CreatePageState extends State<CreatePage> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: _CreateAction(
-                  icon: Icons.video_library_outlined,
-                  label: 'من المعرض',
-                  onTap: publishing ? null : () => _pickVideo(camera: false),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _CreateAction(
-                  icon: Icons.camera_alt_outlined,
-                  label: 'تصوير',
-                  outlined: true,
-                  onTap: publishing ? null : () => _pickVideo(camera: true),
-                ),
-              ),
+              Expanded(child: _CreateAction(icon: Icons.video_library_outlined, label: 'فيديو', onTap: publishing ? null : () => _pickVideo(camera: false))),
+              const SizedBox(width: 8),
+              Expanded(child: _CreateAction(icon: Icons.image_outlined, label: 'صورة', outlined: true, onTap: publishing ? null : () => _pickImage(camera: false))),
+              const SizedBox(width: 8),
+              Expanded(child: _CreateAction(icon: Icons.camera_alt_outlined, label: 'كاميرا', outlined: true, onTap: publishing ? null : () => _pickVideo(camera: true))),
             ],
           ),
-          const SizedBox(height: 16),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: selectedVideo == null
-                ? _EmptyVideoPicker(key: const ValueKey('empty'))
-                : _SelectedVideo(
-                    key: const ValueKey('selected'),
-                    file: File(selectedVideo!.path),
-                    onRemove: publishing
-                        ? null
-                        : () => setState(() {
-                              selectedVideo = null;
-                              selectedCover = null;
-                            }),
-                  ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _CreateModeChip(label: 'فيديو', active: !imageMode, icon: Icons.play_circle_outline, onTap: selectedVideo == null ? null : () => setState(() => imageMode = false))),
+              const SizedBox(width: 8),
+              Expanded(child: _CreateModeChip(label: 'صورة', active: imageMode, icon: Icons.photo_outlined, onTap: selectedImage == null ? null : () => setState(() => imageMode = true))),
+            ],
           ),
+          const SizedBox(height: 14),
+          if (!hasMedia)
+            const _EmptyCreatePicker()
+          else if (selectedImage != null)
+            _SelectedImage(file: File(selectedImage!.path), onRemove: publishing ? null : () => setState(() => selectedImage = null))
+          else
+            _SelectedVideo(key: const ValueKey('selected'), file: File(selectedVideo!.path), onRemove: publishing ? null : () => setState(() { selectedVideo = null; selectedCover = null; })) ,
           if (selectedVideo != null) ...[
             const SizedBox(height: 12),
-            _CoverPicker(
-              cover: selectedCover,
-              onTap: publishing ? null : _pickCover,
-            ),
+            _CoverPicker(cover: selectedCover, onTap: publishing ? null : _pickCover),
           ],
           const SizedBox(height: 16),
           TextField(
@@ -1701,55 +1714,78 @@ class _CreatePageState extends State<CreatePage> {
             maxLength: 2200,
             maxLines: 5,
             enabled: !publishing,
-            decoration: const InputDecoration(
-              hintText: 'اكتب وصف الفيديو والوسوم...',
-              prefixIcon: Icon(Icons.edit_outlined),
-              alignLabelWithHint: true,
-            ),
+            decoration: const InputDecoration(hintText: 'اكتب وصف المنشور والوسوم...', prefixIcon: Icon(Icons.edit_outlined), alignLabelWithHint: true),
           ),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
             initialValue: visibility,
-            decoration: const InputDecoration(
-              labelText: 'من يمكنه مشاهدة الفيديو؟',
-              prefixIcon: Icon(Icons.visibility_outlined),
-            ),
+            decoration: const InputDecoration(labelText: 'من يمكنه المشاهدة؟', prefixIcon: Icon(Icons.visibility_outlined)),
             items: const [
               DropdownMenuItem(value: 'عام', child: Text('الجميع')),
               DropdownMenuItem(value: 'المتابعون', child: Text('المتابعون')),
               DropdownMenuItem(value: 'خاص', child: Text('أنا فقط')),
             ],
-            onChanged: publishing
-                ? null
-                : (value) => setState(() => visibility = value ?? 'عام'),
+            onChanged: publishing ? null : (value) => setState(() => visibility = value ?? 'عام'),
           ),
           const SizedBox(height: 6),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            value: adult,
-            onChanged: publishing ? null : (value) => setState(() => adult = value),
-            title: const Text('محتوى +21'),
-            subtitle: const Text('يتم تطبيق قيود العمر من الخادم أيضًا'),
-          ),
+          SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, value: adult, onChanged: publishing ? null : (value) => setState(() => adult = value), title: const Text('محتوى +21'), subtitle: const Text('تُطبق قيود العمر من الخادم أيضًا')),
           const SizedBox(height: 14),
           SizedBox(
             height: 56,
             child: FilledButton.icon(
               onPressed: publishing ? null : publish,
-              icon: publishing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.publish_outlined),
-              label: Text(publishing ? 'جارٍ الرفع والنشر...' : 'نشر الفيديو على N'),
+              icon: publishing ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.publish_outlined),
+              label: Text(publishing ? 'جارٍ الرفع والنشر...' : (selectedVideo != null ? 'نشر الفيديو على N' : 'نشر الصورة على N')),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _CreateModeChip extends StatelessWidget {
+  const _CreateModeChip({required this.label, required this.active, required this.icon, required this.onTap});
+  final String label;
+  final bool active;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(color: active ? NColors.cyan.withValues(alpha: .12) : NColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: active ? NColors.cyan : Colors.white10)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 18, color: active ? NColors.cyan : NColors.muted), const SizedBox(width: 7), Text(label)]),
+      ),
+    );
+  }
+}
+
+class _EmptyCreatePicker extends StatelessWidget {
+  const _EmptyCreatePicker();
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 360,
+    decoration: BoxDecoration(color: NColors.surface, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
+    child: const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add_photo_alternate_outlined, size: 58, color: Colors.white54), SizedBox(height: 14), Text('اختر صورة أو فيديو لبدء النشر'), SizedBox(height: 6), Text('فيديو حتى 10 دقائق • صور عالية الجودة', style: TextStyle(color: Colors.white38, fontSize: 12))])),
+  );
+}
+
+class _SelectedImage extends StatelessWidget {
+  const _SelectedImage({required this.file, required this.onRemove});
+  final File file;
+  final VoidCallback? onRemove;
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 390,
+    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(24)),
+    clipBehavior: Clip.antiAlias,
+    child: Stack(fit: StackFit.expand, children: [Image.file(file, fit: BoxFit.cover), Positioned(top: 10, right: 10, child: IconButton.filled(onPressed: onRemove, icon: const Icon(Icons.close))), const Positioned(bottom: 12, left: 12, child: _PreviewBadge())]),
+  );
 }
 
 class _CreateAction extends StatelessWidget {
@@ -1984,174 +2020,204 @@ class _VideoPlayerPreviewState extends State<VideoPlayerPreview> {
   }
 }
 
-class LivePage extends StatelessWidget {
+class LivePage extends StatefulWidget {
   const LivePage({super.key});
 
   @override
+  State<LivePage> createState() => _LivePageState();
+}
+
+class _LivePageState extends State<LivePage> {
+  List<Map<String, dynamic>> streams = <Map<String, dynamic>>[];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final value = await data.loadLiveStreams();
+    if (!mounted) return;
+    setState(() {
+      streams = value;
+      loading = false;
+    });
+  }
+
+  Future<void> _start() async {
+    final controller = TextEditingController(text: 'بث N مباشر');
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ابدأ بثًا مباشرًا'),
+        content: TextField(controller: controller, autofocus: true, maxLength: 80, decoration: const InputDecoration(labelText: 'عنوان البث')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('التالي')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || title == null) return;
+    final room = await data.startLive(title: title);
+    if (!mounted) return;
+    if (room == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data.errorMessage ?? 'تعذر بدء البث')));
+      return;
+    }
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => LiveStudioPage(live: room)));
+    if (mounted) _load();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final live = data.posts.where((p) => p.videoUrl != null).take(8).toList();
     return Scaffold(
       backgroundColor: NColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: Row(
-          children: const [
-            NLogo(size: 34),
-            SizedBox(width: 10),
-            Text('البث المباشر'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'ابدأ بثًا',
-            onPressed: () => _showComingSoon(context, 'إنشاء غرفة بث مباشرة'),
-            icon: const Icon(Icons.videocam_outlined),
-          ),
-        ],
+        title: const Text('البث المباشر'),
+        actions: [IconButton(tooltip: 'ابدأ بثًا', onPressed: _start, icon: const Icon(Icons.videocam_outlined))],
       ),
       body: RefreshIndicator(
-        onRefresh: () => data.loadPosts(),
+        onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
             Container(
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF161A25), Color(0xFF0D1018)],
-                ),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: NColors.pink.withValues(alpha: .16),
-                      border: Border.all(color: NColors.pink),
-                    ),
-                    child: const Icon(Icons.live_tv, color: NColors.pink),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('اكتشف البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                        SizedBox(height: 5),
-                        Text('تابع المبدعين وتفاعل معهم لحظة بلحظة', style: TextStyle(color: NColors.muted)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF151820), Color(0xFF0B0D12)]), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white12)),
+              child: Row(children: [
+                Container(width: 54, height: 54, decoration: BoxDecoration(shape: BoxShape.circle, color: NColors.pink.withValues(alpha: .16), border: Border.all(color: NColors.pink)), child: const Icon(Icons.podcasts, color: NColors.pink)),
+                const SizedBox(width: 14),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('اكتشف البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 5), Text('تابع المبدعين وتفاعل معهم لحظة بلحظة', style: TextStyle(color: NColors.muted))])),
+              ]),
             ),
             const SizedBox(height: 22),
             const Text('مباشر الآن', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
             const SizedBox(height: 12),
-            if (live.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
-                decoration: BoxDecoration(
-                  color: NColors.surface,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(Icons.podcasts_outlined, size: 52, color: NColors.muted),
-                    SizedBox(height: 12),
-                    Text('لا توجد بثوث مباشرة الآن'),
-                    SizedBox(height: 6),
-                    Text('كن أول من يبدأ بثًا على N', style: TextStyle(color: NColors.muted)),
-                  ],
-                ),
-              )
+            if (loading)
+              const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
+            else if (streams.isEmpty)
+              Container(padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24), decoration: BoxDecoration(color: NColors.surface, borderRadius: BorderRadius.circular(22)), child: const Column(children: [Icon(Icons.podcasts_outlined, size: 52, color: NColors.muted), SizedBox(height: 12), Text('لا توجد بثوث مباشرة الآن'), SizedBox(height: 6), Text('كن أول من يبدأ بثًا على N', style: TextStyle(color: NColors.muted))]))
             else
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: live.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: .72,
-                ),
+                itemCount: streams.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: .78),
                 itemBuilder: (_, i) {
-                  final post = live[i];
-                  return ClipRRect(
+                  final live = streams[i];
+                  final profile = live['profiles'] is Map ? Map<String, dynamic>.from(live['profiles'] as Map) : <String, dynamic>{};
+                  return InkWell(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LiveViewerPage(live: live))),
                     borderRadius: BorderRadius.circular(20),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Container(color: NColors.surface),
-                        if (post.imageUrl != null)
-                          Image.network(post.imageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox()),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)]),
-                          ),
-                        ),
-                        Positioned(
-                          top: 10,
-                          right: 10,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                            decoration: BoxDecoration(color: NColors.pink, borderRadius: BorderRadius.circular(10)),
-                            child: const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-                          ),
-                        ),
-                        const Positioned(
-                          left: 12,
-                          right: 12,
-                          bottom: 12,
-                          child: Text('غرفة N المباشرة', style: TextStyle(fontWeight: FontWeight.w800)),
-                        ),
-                      ],
+                    child: Container(
+                      decoration: BoxDecoration(color: NColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
+                      padding: const EdgeInsets.all(14),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(child: Container(width: double.infinity, decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16)), child: const Center(child: Icon(Icons.live_tv, size: 46, color: NColors.pink)))),
+                        const SizedBox(height: 10),
+                        Text((live['title'] ?? 'بث N مباشر').toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 4),
+                        Text('@${(profile['username'] ?? 'n').toString()}', style: const TextStyle(color: NColors.muted, fontSize: 12)),
+                        const SizedBox(height: 7),
+                        const Row(children: [Icon(Icons.circle, size: 8, color: NColors.pink), SizedBox(width: 5), Text('مباشر', style: TextStyle(color: NColors.pink, fontWeight: FontWeight.w700, fontSize: 12))]),
+                      ]),
                     ),
                   );
                 },
               ),
             const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(child: _LiveAction(title: 'الهدايا', icon: Icons.card_giftcard_outlined, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NWalletPage())))),
-                const SizedBox(width: 10),
-                Expanded(child: _LiveAction(title: 'العملات', icon: Icons.monetization_on_outlined, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NWalletPage())))),
-              ],
-            ),
+            Row(children: [Expanded(child: _LiveAction(title: 'الهدايا', icon: Icons.card_giftcard_outlined, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NWalletPage())))), const SizedBox(width: 10), Expanded(child: _LiveAction(title: 'العملات', icon: Icons.monetization_on_outlined, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NWalletPage()))))]),
           ],
         ),
       ),
     );
   }
+}
 
-  static void _showComingSoon(BuildContext context, String name) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$name قيد الربط بالخادم')));
+class LiveStudioPage extends StatefulWidget {
+  const LiveStudioPage({super.key, required this.live});
+  final Map<String, dynamic> live;
+
+  @override
+  State<LiveStudioPage> createState() => _LiveStudioPageState();
+}
+
+class _LiveStudioPageState extends State<LiveStudioPage> {
+  CameraController? controller;
+  bool ending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+      final selected = cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cameras.first);
+      final value = CameraController(selected, ResolutionPreset.high, enableAudio: true);
+      await value.initialize();
+      if (!mounted) {
+        await value.dispose();
+        return;
+      }
+      setState(() => controller = value);
+    } catch (_) {}
+  }
+
+  Future<void> _end() async {
+    if (ending) return;
+    setState(() => ending = true);
+    await data.endLive(widget.live['id']?.toString() ?? '');
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    final value = controller;
+    if (value != null) unawaited(value.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(fit: StackFit.expand, children: [
+        if (controller?.value.isInitialized == true) CameraPreview(controller!) else const Center(child: CircularProgressIndicator()),
+        const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x66000000), Colors.transparent, Color(0xAA000000)]))),
+        SafeArea(child: Column(children: [
+          Padding(padding: const EdgeInsets.all(12), child: Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: NColors.pink, borderRadius: BorderRadius.circular(12)), child: const Text('LIVE', style: TextStyle(fontWeight: FontWeight.w900))), const SizedBox(width: 10), Expanded(child: Text((widget.live['title'] ?? 'بث N مباشر').toString(), style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: ending ? null : _end, icon: const Icon(Icons.close, color: Colors.white))])),
+          const Spacer(),
+          const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 24), child: Row(children: [Icon(Icons.favorite, color: NColors.pink), SizedBox(width: 8), Text('البث المباشر جاهز للتفاعل', style: TextStyle(fontWeight: FontWeight.w800))])),
+        ])),
+      ]),
+    );
   }
 }
 
-class _LiveAction extends StatelessWidget {
-  const _LiveAction({required this.title, required this.icon, required this.onTap});
-  final String title;
-  final IconData icon;
-  final VoidCallback onTap;
+class LiveViewerPage extends StatelessWidget {
+  const LiveViewerPage({super.key, required this.live});
+  final Map<String, dynamic> live;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(18),
-    child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: NColors.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white10)),
-      child: Row(children: [Icon(icon, color: NColors.cyan), const SizedBox(width: 10), Text(title, style: const TextStyle(fontWeight: FontWeight.w800))]),
-    ),
-  );
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(backgroundColor: Colors.transparent, title: Text((live['title'] ?? 'بث N مباشر').toString())),
+      body: Stack(fit: StackFit.expand, children: [
+        const Center(child: Icon(Icons.live_tv, size: 92, color: NColors.pink)),
+        const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)]))),
+        SafeArea(child: Column(children: [const Spacer(), Padding(padding: const EdgeInsets.all(18), child: Row(children: [CircleAvatar(child: Icon(Icons.person)), SizedBox(width: 10), Expanded(child: Text('@n', style: TextStyle(fontWeight: FontWeight.w800))), Icon(Icons.favorite, color: NColors.pink), SizedBox(width: 16), Icon(Icons.card_giftcard, color: NColors.cyan)]))])),
+      ]),
+    );
+  }
 }
-
 
 class NWalletPage extends StatefulWidget {
   const NWalletPage({super.key});

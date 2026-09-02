@@ -23,3 +23,10 @@ The APK must be built with the project's existing Supabase URL/publishable key s
 
 ## Important
 A production live-video system and AI provider necessarily depend on server/provider credentials and deployment. The source package includes the application and backend integration points; it does not contain private provider keys.
+
+
+## Full feature package update
+- Image-only publishing is enabled in the Create screen in addition to video publishing.
+- Live has start/stop room flows and camera studio/viewer UI backed by `live_streams`.
+- N AI assistant client remains connected to the Supabase Edge Function.
+- Production live transport still requires a WebRTC/CDN provider; no private provider credentials are embedded.
