@@ -2200,6 +2200,17 @@ class NData extends ChangeNotifier {
   // PRIVATE ACCOUNT
   // =========================================================
 
+  Future<void> updateProfile({String? name, String? username, String? bio, String? avatarUrl}) async {
+    final values = <String, dynamic>{};
+    if (name != null) values['name'] = name.trim();
+    if (username != null) values['username'] = username.trim().replaceFirst('@', '').toLowerCase();
+    if (bio != null) values['bio'] = bio.trim();
+    if (avatarUrl != null) values['avatar_url'] = avatarUrl;
+    if (values.isEmpty) return;
+    await _updateProfile(values);
+    await loadCurrentUser();
+  }
+
   Future<void> setPrivateAccount(
     bool value,
   ) async {

@@ -1,3 +1,269 @@
+-- N production database bootstrap + security hardening
+-- Run once in Supabase SQL Editor. Safe to re-run where supported.
+create extension if not exists pgcrypto;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  name text not null default 'مستخدم N',
+  username text not null unique,
+  email text not null default '',
+  age int not null default 25 check (age >= 0 and age <= 120),
+  avatar_url text,
+  bio text not null default '',
+  private_account boolean not null default false,
+  activity_status boolean not null default true,
+  allow_messages boolean not null default true,
+  notifications boolean not null default true,
+  sounds boolean not null default true,
+  supporter_level int not null default 0,
+  coins bigint not null default 0,
+  verified boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.posts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  text text not null default '',
+  adult boolean not null default false,
+  visibility text not null default 'عام' check (visibility in ('عام','المتابعون','خاص')),
+  video boolean not null default false,
+  video_url text,
+  image_url text,
+  views_count bigint not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.post_likes (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id,user_id)
+);
+
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  parent_id uuid references public.comments(id) on delete cascade,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.saved_posts (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id,user_id)
+);
+
+create table if not exists public.follows (
+  follower_id uuid not null references public.profiles(id) on delete cascade,
+  following_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (follower_id,following_id),
+  check (follower_id <> following_id)
+);
+
+create table if not exists public.stories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  media_url text not null,
+  media_type text not null default 'image' check (media_type in ('image','video')),
+  adult boolean not null default false,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '24 hours')
+);
+
+create table if not exists public.conversations (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.conversation_members (
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (conversation_id,user_id)
+);
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.live_streams (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  title text not null default 'بث N مباشر',
+  room_name text not null unique,
+  adult boolean not null default false,
+  status text not null default 'live' check (status in ('live','ended')),
+  created_at timestamptz not null default now(),
+  ended_at timestamptz
+);
+create table if not exists public.live_gifts (
+  id uuid primary key default gen_random_uuid(),
+  live_id uuid not null references public.live_streams(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  gift_id text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  actor_id uuid references public.profiles(id) on delete set null,
+  type text not null,
+  post_id uuid references public.posts(id) on delete cascade,
+  message text not null default '',
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.user_blocks (
+  blocker_id uuid not null references public.profiles(id) on delete cascade,
+  blocked_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_id,blocked_id), check (blocker_id <> blocked_id)
+);
+create table if not exists public.content_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid not null references public.profiles(id) on delete cascade,
+  target_user_id uuid references public.profiles(id) on delete cascade,
+  post_id uuid references public.posts(id) on delete cascade,
+  reason text not null,
+  details text,
+  status text not null default 'open',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.post_views (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  viewed_at timestamptz not null default now(),
+  primary key(post_id,user_id)
+);
+create table if not exists public.n_gift_catalog (
+  gift_id text primary key,
+  name text not null,
+  icon text not null,
+  price int not null check(price >= 0),
+  active boolean not null default true
+);
+create table if not exists public.n_coin_transactions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  amount bigint not null,
+  kind text not null,
+  reference_id text,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.n_gift_sends (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  gift_id text not null references public.n_gift_catalog(gift_id),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.n_admins (
+  user_id uuid primary key references public.profiles(id) on delete cascade
+);
+create table if not exists public.n_user_suspensions (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  reason text not null,
+  suspended_until timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create or replace view public.public_profiles as
+select id,name,username,avatar_url,bio,verified,private_account,created_at
+from public.profiles;
+
+create index if not exists posts_created_idx on public.posts(created_at desc);
+create index if not exists posts_user_idx on public.posts(user_id,created_at desc);
+create index if not exists comments_post_idx on public.comments(post_id,created_at);
+create index if not exists notifications_user_idx on public.notifications(user_id,created_at desc);
+create index if not exists messages_conversation_idx on public.messages(conversation_id,created_at);
+create index if not exists follows_following_idx on public.follows(following_id);
+create index if not exists stories_expires_idx on public.stories(expires_at);
+
+insert into public.n_gift_catalog(gift_id,name,icon,price) values
+ ('rose','وردة','🌹',10),('heart','قلب','💖',50),('star','نجمة','⭐',100),('crown','تاج','👑',500)
+on conflict (gift_id) do nothing;
+
+alter table public.profiles enable row level security;
+alter table public.posts enable row level security;
+alter table public.post_likes enable row level security;
+alter table public.comments enable row level security;
+alter table public.saved_posts enable row level security;
+alter table public.follows enable row level security;
+alter table public.stories enable row level security;
+alter table public.conversations enable row level security;
+alter table public.conversation_members enable row level security;
+alter table public.messages enable row level security;
+alter table public.live_streams enable row level security;
+alter table public.live_gifts enable row level security;
+alter table public.notifications enable row level security;
+alter table public.user_blocks enable row level security;
+alter table public.content_reports enable row level security;
+alter table public.post_views enable row level security;
+alter table public.n_gift_catalog enable row level security;
+alter table public.n_coin_transactions enable row level security;
+alter table public.n_gift_sends enable row level security;
+
+-- Base policies
+create policy profiles_select_own on public.profiles for select to authenticated using(id=auth.uid());
+create policy profiles_insert_own on public.profiles for insert to authenticated with check(id=auth.uid());
+create policy profiles_update_own_base on public.profiles for update to authenticated using(id=auth.uid()) with check(id=auth.uid());
+create policy posts_select_base on public.posts for select to authenticated using(visibility='عام' or user_id=auth.uid());
+create policy posts_insert_base on public.posts for insert to authenticated with check(user_id=auth.uid());
+create policy posts_update_own on public.posts for update to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+create policy posts_delete_own on public.posts for delete to authenticated using(user_id=auth.uid());
+create policy likes_select_auth on public.post_likes for select to authenticated using(true);
+create policy likes_delete_own on public.post_likes for delete to authenticated using(user_id=auth.uid());
+create policy comments_insert_own on public.comments for insert to authenticated with check(user_id=auth.uid());
+create policy comments_delete_own on public.comments for delete to authenticated using(user_id=auth.uid());
+create policy saved_select_own on public.saved_posts for select to authenticated using(user_id=auth.uid());
+create policy saved_delete_own on public.saved_posts for delete to authenticated using(user_id=auth.uid());
+create policy follows_select_auth on public.follows for select to authenticated using(true);
+create policy follows_insert_own on public.follows for insert to authenticated with check(follower_id=auth.uid());
+create policy follows_delete_own on public.follows for delete to authenticated using(follower_id=auth.uid());
+create policy stories_select_auth on public.stories for select to authenticated using(expires_at>now() or user_id=auth.uid());
+create policy stories_delete_own on public.stories for delete to authenticated using(user_id=auth.uid());
+create policy conv_select_member on public.conversations for select to authenticated using(exists(select 1 from public.conversation_members cm where cm.conversation_id=id and cm.user_id=auth.uid()));
+create policy members_select_own on public.conversation_members for select to authenticated using(user_id=auth.uid());
+create policy messages_select_member on public.messages for select to authenticated using(exists(select 1 from public.conversation_members cm where cm.conversation_id=messages.conversation_id and cm.user_id=auth.uid()));
+create policy notifications_select_own on public.notifications for select to authenticated using(user_id=auth.uid());
+create policy notifications_update_own on public.notifications for update to authenticated using(user_id=auth.uid()) with check(user_id=auth.uid());
+create policy blocks_select_own on public.user_blocks for select to authenticated using(blocker_id=auth.uid());
+create policy blocks_insert_own on public.user_blocks for insert to authenticated with check(blocker_id=auth.uid());
+create policy blocks_delete_own on public.user_blocks for delete to authenticated using(blocker_id=auth.uid());
+create policy reports_insert_own on public.content_reports for insert to authenticated with check(reporter_id=auth.uid());
+create policy views_select_own on public.post_views for select to authenticated using(user_id=auth.uid());
+create policy gifts_catalog_select on public.n_gift_catalog for select to authenticated using(active=true);
+
+-- Profile bootstrap trigger
+create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path=public as $$
+begin
+ insert into public.profiles(id,name,username,email,age)
+ values(new.id,coalesce(new.raw_user_meta_data->>'name','مستخدم N'),lower(coalesce(new.raw_user_meta_data->>'username','n_'||substr(new.id::text,1,8))),coalesce(new.email,''),coalesce((new.raw_user_meta_data->>'age')::int,25))
+ on conflict(id) do nothing;
+ return new;
+end; $$;
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
+
+create or replace function public.register_post_view(target_post_id uuid) returns void language plpgsql security definer set search_path=public as $$
+begin insert into public.post_views(post_id,user_id) values(target_post_id,auth.uid()) on conflict do nothing; update public.posts set views_count=(select count(*) from public.post_views where post_id=target_post_id) where id=target_post_id; end; $$;
+grant execute on function public.register_post_view(uuid) to authenticated;
+
+create or replace function public.n_mark_notification_read(notification_id uuid) returns void language sql security definer set search_path=public as $$ update public.notifications set is_read=true where id=notification_id and user_id=auth.uid(); $$;
+grant execute on function public.n_mark_notification_read(uuid) to authenticated;
+
 -- =========================================================
 -- N — SECURITY PATCH
 -- إصلاحات ScoutMy / Supabase RLS

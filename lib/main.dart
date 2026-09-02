@@ -13,6 +13,7 @@ import 'core/constants/app_colors.dart';
 import 'core/widgets/n_bottom_nav.dart';
 import 'core/widgets/n_logo.dart';
 import 'pages/inbox_page.dart';
+import 'pages/security_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -547,6 +548,45 @@ class _NHomeState extends State<NHome> {
     setState(() => index = value);
   }
 
+  Future<void> _openEditProfile(BuildContext context) async {
+    final name = TextEditingController(text: data.name);
+    final username = TextEditingController(text: data.username);
+    final bio = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, backgroundColor: NColors.surface,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(sheetContext).viewInsets.bottom + 18),
+        child: Form(
+          key: formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('تعديل الملف الشخصي', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 14),
+            TextFormField(controller: name, decoration: const InputDecoration(labelText: 'الاسم'), validator: (v) => v!.trim().isEmpty ? 'اكتب الاسم' : null),
+            const SizedBox(height: 10),
+            TextFormField(controller: username, decoration: const InputDecoration(labelText: 'اسم المستخدم', prefixText: '@'), validator: (v) => v!.trim().isEmpty ? 'اكتب اسم المستخدم' : null),
+            const SizedBox(height: 10),
+            TextFormField(controller: bio, maxLines: 3, decoration: const InputDecoration(labelText: 'النبذة')),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                try {
+                  await data.updateProfile(name: name.text, username: username.text, bio: bio.text);
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                } catch (e) {
+                  if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(const SnackBar(content: Text('تعذر حفظ الملف الشخصي')));
+                }
+              },
+              child: const Text('حفظ التغييرات'),
+            ),
+          ]),
+        ),
+      ),
+    );
+    name.dispose(); username.dispose(); bio.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -575,6 +615,7 @@ class NVideoFeedPage extends StatefulWidget {
 class _NVideoFeedPageState extends State<NVideoFeedPage> {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
+  bool _followingOnly = false;
 
   @override
   void initState() {
@@ -593,7 +634,13 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
     return AnimatedBuilder(
       animation: data,
       builder: (context, _) {
-        final posts = data.visiblePosts();
+        final visible = data.visiblePosts();
+        final posts = _followingOnly
+            ? visible.where((post) =>
+                post.username == data.username ||
+                data.following.contains(post.username),
+              ).toList()
+            : visible;
 
         if (posts.isEmpty) {
           return const Scaffold(
@@ -625,7 +672,19 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
                   );
                 },
               ),
-              const _NHomeHeader(),
+              _NHomeHeader(
+                following: _followingOnly,
+                onChanged: (value) {
+                  if (_followingOnly == value) return;
+                  setState(() {
+                    _followingOnly = value;
+                    _currentIndex = 0;
+                  });
+                  if (_pageController.hasClients) {
+                    _pageController.jumpToPage(0);
+                  }
+                },
+              ),
             ],
           ),
         );
@@ -635,7 +694,10 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
 }
 
 class _NHomeHeader extends StatelessWidget {
-  const _NHomeHeader();
+  const _NHomeHeader({required this.following, required this.onChanged});
+
+  final bool following;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -646,43 +708,26 @@ class _NHomeHeader extends StatelessWidget {
       right: 12,
       child: Row(
         children: [
-          const NLogo(size: 34),
-          const SizedBox(width: 18),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search_rounded, color: Colors.white, size: 29),
-            tooltip: 'بحث',
-          ),
           IconButton(
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const NInboxPage(initialTab: 0)),
+              MaterialPageRoute(builder: (_) => const NSearchPage()),
             ),
-            icon: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 27),
-            tooltip: 'التواصل',
+            tooltip: 'بحث',
+            icon: const Icon(Icons.search_rounded, color: Colors.white, size: 28),
           ),
           const Spacer(),
-          _NTopTab(label: 'متابعة', active: false),
-          const SizedBox(width: 24),
-          _NTopTab(label: 'لك', active: true),
-          const SizedBox(width: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.monetization_on_outlined, color: Color(0xFFFFC928), size: 18),
-                const SizedBox(width: 4),
-                Text('${data.coins}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(width: 5),
-                const Icon(Icons.add_circle_outline, size: 18),
-              ],
-            ),
+          GestureDetector(
+            onTap: () => onChanged(true),
+            child: _NTopTab(label: 'متابعة', active: following),
           ),
+          const SizedBox(width: 28),
+          GestureDetector(
+            onTap: () => onChanged(false),
+            child: _NTopTab(label: 'لك', active: !following),
+          ),
+          const Spacer(),
+          const SizedBox(width: 48),
         ],
       ),
     );
@@ -927,9 +972,10 @@ class _ShortVideoCardState extends State<ShortVideoCard> {
           ),
         ),
         Positioned(
-          right: 12,
-          bottom: 120,
+          right: 10,
+          bottom: 132,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               _VideoAction(
                 icon: widget.post.liked ? Icons.favorite : Icons.favorite_border,
@@ -956,16 +1002,21 @@ class _ShortVideoCardState extends State<ShortVideoCard> {
               const SizedBox(height: 6),
               IconButton(
                 onPressed: _toggleMute,
-                style: IconButton.styleFrom(backgroundColor: Colors.black45),
-                icon: Icon(_muted ? Icons.volume_off : Icons.volume_up, color: Colors.white),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 46, height: 46),
+                icon: Icon(
+                  _muted ? Icons.volume_off : Icons.volume_up,
+                  color: Colors.white,
+                  size: 29,
+                ),
               ),
             ],
           ),
         ),
         Positioned(
           left: 16,
-          right: 82,
-          bottom: 28,
+          right: 78,
+          bottom: 30,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1023,15 +1074,190 @@ class _VideoAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
           onPressed: onTap,
-          style: IconButton.styleFrom(backgroundColor: Colors.black45),
-          icon: Icon(icon, size: 29, color: active ? const Color(0xFFFF2D55) : Colors.white),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 46, height: 46),
+          icon: Icon(
+            icon,
+            size: 31,
+            color: active ? NColors.pink : Colors.white,
+          ),
         ),
-        if (value != null) Text('$value', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
+        if (value != null)
+          Text(
+            '$value',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+        const SizedBox(height: 9),
       ],
+    );
+  }
+}
+
+class NSearchPage extends StatefulWidget {
+  const NSearchPage({super.key});
+
+  @override
+  State<NSearchPage> createState() => _NSearchPageState();
+}
+
+class _NSearchPageState extends State<NSearchPage> {
+  final controller = TextEditingController();
+  bool loading = false;
+  String? error;
+  List<Map<String, dynamic>> results = [];
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final query = controller.text.trim().replaceFirst('@', '');
+    if (query.isEmpty) {
+      setState(() {
+        results = [];
+        error = null;
+      });
+      return;
+    }
+
+    setState(() {
+      loading = true;
+      error = null;
+    });
+
+    try {
+      final rows = await data.supabase
+          .from('public_profiles')
+          .select('id, name, username, avatar_url, verified')
+          .or('username.ilike.%$query%,name.ilike.%$query%')
+          .limit(30);
+
+      if (!mounted) return;
+      setState(() {
+        results = rows.map((row) => Map<String, dynamic>.from(row)).toList();
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = 'تعذر تنفيذ البحث';
+        results = [];
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NColors.background,
+      appBar: AppBar(
+        backgroundColor: NColors.background,
+        title: const Text('بحث', style: TextStyle(fontWeight: FontWeight.w900)),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => _search(),
+              decoration: InputDecoration(
+                hintText: 'ابحث عن اسم أو @username',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  onPressed: _search,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+              ),
+            ),
+          ),
+          if (loading)
+            const LinearProgressIndicator(minHeight: 2),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(error!, style: const TextStyle(color: NColors.muted)),
+            ),
+          Expanded(
+            child: results.isEmpty && !loading
+                ? const Center(
+                    child: Text(
+                      'اكتب اسمًا للبحث عن المستخدمين',
+                      style: TextStyle(color: NColors.muted),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                    itemCount: results.length,
+                    separatorBuilder: (_, __) => const Divider(
+                      height: 1,
+                      color: NColors.divider,
+                    ),
+                    itemBuilder: (context, index) {
+                      final row = results[index];
+                      final name = (row['name'] ?? 'مستخدم N').toString();
+                      final username = (row['username'] ?? '').toString();
+                      final avatar = (row['avatar_url'] ?? '').toString();
+                      final verified = row['verified'] == true;
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        leading: CircleAvatar(
+                          radius: 26,
+                          backgroundColor: NColors.surface,
+                          backgroundImage: avatar.isNotEmpty
+                              ? NetworkImage(avatar)
+                              : null,
+                          child: avatar.isEmpty
+                              ? const Icon(Icons.person_rounded)
+                              : null,
+                        ),
+                        title: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            if (verified) ...[
+                              const SizedBox(width: 5),
+                              const Icon(Icons.verified, size: 16, color: NColors.cyan),
+                            ],
+                          ],
+                        ),
+                        subtitle: Text('@$username'),
+                        onTap: username.isEmpty
+                            ? null
+                            : () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => UserProfilePage(
+                                      name: name,
+                                      username: username,
+                                    ),
+                                  ),
+                                ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1063,7 +1289,7 @@ class _ExplorePageState extends State<ExplorePage> {
   Future<void> _loadExplore([String query = '']) async {
     try {
       dynamic request = data.supabase
-          .from('profiles')
+          .from('public_profiles')
           .select('id, name, username, avatar_url, verified')
           .limit(30);
 
@@ -1443,6 +1669,8 @@ class _CreatePageState extends State<CreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = NColors;
+
     return Scaffold(
       backgroundColor: NColors.background,
       appBar: AppBar(
@@ -2405,8 +2633,28 @@ class _ProfilePageState extends State<ProfilePage> {
                 actions: [
                   IconButton(
                     tooltip: 'الإشعارات',
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NInboxPage(initialTab: 1),
+                      ),
+                    ),
                     icon: const Icon(Icons.notifications_none_rounded),
+                  ),
+                  IconButton(
+                    tooltip: 'مساعد N الذكي',
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NAssistantPage())),
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                  ),
+                  IconButton(
+                    tooltip: 'الأمان والخصوصية',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => NSecurityPage(data: data),
+                      ),
+                    ),
+                    icon: const Icon(Icons.settings_outlined),
                   ),
                   IconButton(
                     tooltip: 'تسجيل الخروج',
@@ -2492,7 +2740,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: () => _showProfileMessage(context, 'يمكن تعديل بيانات الملف من إعدادات الحساب'),
+                              onPressed: () => _openEditProfile(context),
                               icon: const Icon(Icons.edit_outlined, size: 18),
                               label: const Text('تعديل الملف الشخصي'),
                               style: OutlinedButton.styleFrom(
@@ -2853,4 +3101,37 @@ class NotificationsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class NAssistantPage extends StatefulWidget {
+  const NAssistantPage({super.key});
+  @override State<NAssistantPage> createState() => _NAssistantPageState();
+}
+
+class _NAssistantPageState extends State<NAssistantPage> {
+  final input = TextEditingController();
+  final messages = <Map<String,String>>[];
+  bool busy = false;
+  @override void dispose() { input.dispose(); super.dispose(); }
+  Future<void> send() async {
+    final text = input.text.trim();
+    if (text.isEmpty || busy) return;
+    setState(() { messages.add({'role':'user','text':text}); input.clear(); busy=true; });
+    try {
+      final result = await Supabase.instance.client.functions.invoke('n-ai-assistant', body: {'message': text});
+      final data = Map<String,dynamic>.from(result.data as Map);
+      setState(() => messages.add({'role':'assistant','text':(data['answer'] ?? 'تعذر الحصول على رد').toString()}));
+    } catch (_) {
+      setState(() => messages.add({'role':'assistant','text':'مساعد N غير مفعّل على الخادم بعد.'}));
+    } finally { if (mounted) setState(() => busy=false); }
+  }
+  @override Widget build(BuildContext context) => Scaffold(
+    backgroundColor: NColors.background,
+    appBar: AppBar(title: const Text('مساعد N الذكي')),
+    body: Column(children:[
+      Expanded(child: ListView.builder(padding: const EdgeInsets.all(16), itemCount: messages.length, itemBuilder: (_,i){ final m=messages[i]; return Align(alignment:m['role']=='user'?Alignment.centerRight:Alignment.centerLeft, child: Container(margin:const EdgeInsets.only(bottom:10), padding:const EdgeInsets.all(14), constraints:const BoxConstraints(maxWidth:340), decoration:BoxDecoration(color:m['role']=='user'?NColors.pink:NColors.surface, borderRadius:BorderRadius.circular(16)), child:Text(m['text']??''))); })),
+      SafeArea(child: Padding(padding:const EdgeInsets.all(12), child: Row(children:[Expanded(child:TextField(controller:input,onSubmitted:(_)=>send(),decoration:const InputDecoration(hintText:'اكتب رسالتك إلى مساعد N'))), const SizedBox(width:8), IconButton(onPressed:busy?null:send, icon:const Icon(Icons.send_rounded))]))),
+    ]),
+  );
 }
