@@ -548,7 +548,7 @@ class _NHomeState extends State<NHome> {
     setState(() => index = value);
   }
 
-  Future<void> _openEditProfile(BuildContext context) async {
+  Future<void>(BuildContext context) async {
     final name = TextEditingController(text: data.name);
     final username = TextEditingController(text: data.username);
     final bio = TextEditingController();
