@@ -44,6 +44,9 @@ jobs:
 
           cp -a "$ROOT"/. .
 
+          # Keep the existing GitHub workflow untouched.
+          rm -f .github/workflows/build_android.yml
+
           rm -f "$ZIP"
 
           git add -A
@@ -51,5 +54,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git commit -m "Replace repository with N Production Final"
-          git push origin HEAD:main --force
+          git commit -m "Replace repository with N Production Final" || exit 0
+          git push origin HEAD:main
