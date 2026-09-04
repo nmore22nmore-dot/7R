@@ -1,3 +1,21 @@
+name: Clean Replace N Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Clean and replace
         shell: bash
         run: |
@@ -50,6 +68,6 @@
 
           git status --short
 
-          git commit -m "Clean replace with N Production Full" || true
+          git commit -m "Fix clean production replacement workflow" || true
 
           git push origin HEAD:main
