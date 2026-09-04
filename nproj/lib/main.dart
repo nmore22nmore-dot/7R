@@ -537,7 +537,7 @@ class _NHomeState extends State<NHome> {
     const NVideoFeedPage(),
     const ExplorePage(),
     const CreatePage(),
-    const LivePage(),
+    const MessagesPage(),
     const ProfilePage(),
   ];
 
@@ -608,7 +608,7 @@ class _NVideoFeedPageState extends State<NVideoFeedPage> {
 
         if (posts.isEmpty) {
           return const Scaffold(
-            backgroundColor: NColors.background,
+            backgroundColor: Colors.black,
             body: Center(child: CircularProgressIndicator()),
           );
         }
@@ -667,9 +667,9 @@ class _NHomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
     return Positioned(
-      top: top + 6,
-      left: 12,
-      right: 12,
+      top: top + 7,
+      left: 10,
+      right: 10,
       child: Row(
         children: [
           IconButton(
@@ -678,20 +678,50 @@ class _NHomeHeader extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const NSearchPage()),
             ),
             tooltip: 'بحث',
-            icon: const Icon(Icons.search_rounded, color: Colors.white, size: 28),
+            icon: const Icon(Icons.search_rounded, color: Colors.white, size: 30),
           ),
-          const Spacer(),
+          const SizedBox(width: 2),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _NTopTab(label: 'المجتمع', active: false),
+                const SizedBox(width: 19),
+                _NTopTab(label: 'جديد', active: false),
+                const SizedBox(width: 19),
+                GestureDetector(
+                  onTap: () => onChanged(true),
+                  child: _NTopTab(label: 'أتابعه', active: following),
+                ),
+                const SizedBox(width: 19),
+                GestureDetector(
+                  onTap: () => onChanged(false),
+                  child: _NTopTab(label: 'لك', active: !following),
+                ),
+              ],
+            ),
+          ),
           GestureDetector(
-            onTap: () => onChanged(true),
-            child: _NTopTab(label: 'متابعة', active: following),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LivePage()),
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 1.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.wifi_tethering_rounded, size: 17, color: Colors.white),
+                  SizedBox(width: 2),
+                  Text('LIVE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: 28),
-          GestureDetector(
-            onTap: () => onChanged(false),
-            child: _NTopTab(label: 'لك', active: !following),
-          ),
-          const Spacer(),
-          const SizedBox(width: 48),
         ],
       ),
     );
@@ -2745,42 +2775,19 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 actions: [
                   IconButton(
-                    tooltip: 'الإشعارات',
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const NInboxPage(initialTab: 1),
-                      ),
-                    ),
-                    icon: const Icon(Icons.notifications_none_rounded),
+                    tooltip: 'مشاركة الملف الشخصي',
+                    onPressed: () => Share.share('تابع @${data.username} على N'),
+                    icon: const Icon(Icons.ios_share_rounded),
                   ),
                   IconButton(
-                    tooltip: 'مساعد N الذكي',
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NAssistantPage())),
-                    icon: const Icon(Icons.auto_awesome_rounded),
-                  ),
-                  IconButton(
-                    tooltip: 'الأمان والخصوصية',
+                    tooltip: 'الإعدادات والخصوصية',
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => NSecurityPage(data: data),
                       ),
                     ),
-                    icon: const Icon(Icons.settings_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'تسجيل الخروج',
-                    onPressed: () async {
-                      await data.logout();
-                      if (!context.mounted) return;
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginPage()),
-                        (_) => false,
-                      );
-                    },
-                    icon: const Icon(Icons.logout_rounded),
+                    icon: const Icon(Icons.menu_rounded),
                   ),
                 ],
               ),
@@ -2838,6 +2845,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         const SizedBox(height: 5),
                         Text(data.email, style: const TextStyle(color: NColors.muted, fontSize: 12)),
                       ],
+                      const SizedBox(height: 8),
+                      const Text(
+                        'كن نفسك، افعل المزيد، وشارك لحظاتك مع مجتمع N ✦',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Colors.white70, height: 1.4),
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,

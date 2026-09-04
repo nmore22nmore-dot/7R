@@ -1,0 +1,81 @@
+workflows:
+  n_production_v4_ui:
+    name: N Production 4.0.0 - UI Matched
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      flutter: stable
+      java: 17
+      groups:
+        - N_SUPABASE
+        - keystore_credentials
+
+    scripts:
+      - name: Verify project and environment
+        script: |
+          set -e
+          test -f pubspec.yaml
+          test -f lib/main.dart
+          test -f lib/n_data.dart
+          test -f android/app/build.gradle
+          test -n "$CM_KEYSTORE"
+          test -n "$CM_KEYSTORE_PASSWORD"
+          test -n "$CM_KEY_ALIAS"
+          test -n "$CM_KEY_PASSWORD"
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          echo "N Production 4.0.0 source and environment verified."
+
+      - name: Configure Flutter and Android
+        script: |
+          set -e
+          echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
+          echo "Android/Flutter configuration prepared."
+
+      - name: Prepare release keystore
+        script: |
+          set -e
+          KEYSTORE_PATH="$CM_BUILD_DIR/n-release.p12"
+          echo "$CM_KEYSTORE" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "CM_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$CM_ENV"
+          echo "Release keystore prepared."
+
+      - name: Install dependencies
+        script: |
+          set -e
+          flutter clean
+          flutter pub get
+
+      - name: Analyze and test
+        script: |
+          set -e
+          flutter analyze
+          flutter test
+
+      - name: Build N Production APK
+        script: |
+          set -e
+          flutter build apk --release \
+            --obfuscate \
+            --split-debug-info=build/symbols \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$APK"
+          sha256sum "$APK" | tee "$APK.sha256"
+          echo "N Production 4.0.0 APK created successfully."
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/app-release.apk.sha256
+      - build/symbols/**
+
+    publishing:
+      scripts:
+        - name: Build summary
+          script: |
+            echo "N Production 4.0.0 build completed."
