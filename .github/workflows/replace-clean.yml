@@ -1,34 +1,25 @@
-name: Clean Replace N Production
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  replace:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Clean and replace
         shell: bash
         run: |
-          set -e
+          set -euxo pipefail
+
+          echo "=== Repository files ==="
+          ls -la
 
           ZIP="N-production-full-4.0.0.zip"
 
+          echo "=== Checking ZIP ==="
+          ls -lh "$ZIP"
           test -f "$ZIP"
 
           rm -rf /tmp/n_project
           mkdir -p /tmp/n_project
 
+          echo "=== Extracting ZIP ==="
           unzip -q "$ZIP" -d /tmp/n_project
+
+          echo "=== Extracted structure ==="
+          find /tmp/n_project -maxdepth 3 -type f | head -100
 
           ROOT="/tmp/n_project"
 
@@ -36,17 +27,20 @@ jobs:
             ROOT="$ROOT/N_complete_release"
           fi
 
+          echo "ROOT=$ROOT"
+
+          echo "=== Checking Flutter project ==="
           test -f "$ROOT/pubspec.yaml"
           test -d "$ROOT/lib"
           test -d "$ROOT/android"
 
-          # حذف كل محتوى المستودع القديم مع إبقاء Git
+          echo "=== Cleaning repository ==="
           find . -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
 
-          # نسخ المشروع الجديد بالكامل
+          echo "=== Copying new project ==="
           cp -a "$ROOT"/. .
 
-          # حذف ملف ZIP من المشروع
+          echo "=== Removing ZIP ==="
           rm -f "$ZIP"
 
           git config user.name "github-actions[bot]"
@@ -54,6 +48,8 @@ jobs:
 
           git add -A
 
-          git commit -m "Clean replace with N Production Full" || exit 0
+          git status --short
+
+          git commit -m "Clean replace with N Production Full" || true
 
           git push origin HEAD:main
