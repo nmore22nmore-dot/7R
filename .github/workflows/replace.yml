@@ -14,65 +14,62 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find ZIP
+      - name: Replace files from ZIP
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
+          set -e
+
+          ZIP=$(find . -maxdepth 1 -type f -name "*.zip" -print -quit)
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: No ZIP file found"
             exit 1
           fi
 
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "Found ZIP: $ZIP"
+          echo "ZIP found: $ZIP"
 
-      - name: Extract ZIP
-        run: |
           rm -rf extracted
           mkdir extracted
 
           unzip -q "$ZIP" -d extracted
 
-          echo "ZIP contents:"
-          find extracted -maxdepth 4 -type f | head -100
+          echo "Extracted files:"
+          find extracted -maxdepth 5 -type f | head -100
 
-      - name: Locate Flutter project
-        run: |
-          PROJECT_DIR=$(find extracted -name "pubspec.yaml" -type f -print -quit)
+          PUBSPEC=$(find extracted -type f -name "pubspec.yaml" -print -quit)
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: pubspec.yaml was not found!"
+          if [ -z "$PUBSPEC" ]; then
+            echo "ERROR: pubspec.yaml not found inside ZIP"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_DIR")
+          PROJECT_DIR=$(dirname "$PUBSPEC")
 
-          echo "Flutter project directory:"
+          echo "Flutter project found at:"
           echo "$PROJECT_DIR"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Removing old repository files..."
 
-      - name: Remove old project
-        run: |
           find . -mindepth 1 -maxdepth 1 \
             ! -name ".git" \
             ! -name ".github" \
             ! -name "$(basename "$ZIP")" \
             -exec rm -rf {} +
 
-      - name: Copy new project
-        run: |
-          echo "Copying from:"
-          echo "$PROJECT_DIR"
+          echo "Copying new project..."
 
           cp -a "$PROJECT_DIR"/. .
 
-      - name: Remove ZIP
-        run: |
+          echo "Removing ZIP..."
+
           rm -f "$ZIP"
           rm -rf extracted
 
-      - name: Commit changes
+          echo "Final repository:"
+          ls -la
+
+      - name: Commit and push
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -82,6 +79,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes detected"
           else
-            git commit -m "Replace all project files with new version"
+            git commit -m "Replace repository contents with latest ZIP"
             git push
           fi
