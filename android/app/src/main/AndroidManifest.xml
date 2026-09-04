@@ -8,7 +8,8 @@
         android:name="${applicationName}"
         android:label="N"
         android:icon="@drawable/n_icon"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false">
 
         <activity
             android:name=".MainActivity"
