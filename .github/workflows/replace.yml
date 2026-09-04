@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Replace files from ZIP
+      - name: Extract and replace project
         shell: bash
         run: |
           set -e
@@ -50,9 +50,12 @@ jobs:
 
           echo "Removing old repository files..."
 
+          # حذف محتويات المستودع القديمة فقط
+          # مع إبقاء .git و .github و extracted و ZIP مؤقتًا
           find . -mindepth 1 -maxdepth 1 \
             ! -name ".git" \
             ! -name ".github" \
+            ! -name "extracted" \
             ! -name "$(basename "$ZIP")" \
             -exec rm -rf {} +
 
@@ -60,13 +63,13 @@ jobs:
 
           cp -a "$PROJECT_DIR"/. .
 
-          echo "Removing ZIP..."
+          echo "Removing temporary files..."
 
-          rm -f "$ZIP"
           rm -rf extracted
+          rm -f "$ZIP"
 
-          echo "Final repository:"
-          ls -la
+          echo "Final repository contents:"
+          find . -maxdepth 2 -not -path "./.git/*" -not -path "./.github/*"
 
       - name: Commit and push
         shell: bash
