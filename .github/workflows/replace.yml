@@ -14,37 +14,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find ZIP file
+      - name: Find ZIP
         run: |
           ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "No ZIP file found!"
+            echo "ERROR: No ZIP file found"
             exit 1
           fi
 
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "Found: $ZIP"
+          echo "Found ZIP: $ZIP"
 
       - name: Extract ZIP
         run: |
           rm -rf extracted
           mkdir extracted
+
           unzip -q "$ZIP" -d extracted
 
-      - name: Find project folder
+          echo "ZIP contents:"
+          find extracted -maxdepth 4 -type f | head -100
+
+      - name: Locate Flutter project
         run: |
-          PROJECT_DIR=$(find extracted -type f -name "pubspec.yaml" -printf '%h\n' | head -n 1)
+          PROJECT_DIR=$(find extracted -name "pubspec.yaml" -type f -print -quit)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "pubspec.yaml not found inside ZIP!"
+            echo "ERROR: pubspec.yaml was not found!"
             exit 1
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Project found at: $PROJECT_DIR"
+          PROJECT_DIR=$(dirname "$PROJECT_DIR")
 
-      - name: Remove old project files
+          echo "Flutter project directory:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Remove old project
         run: |
           find . -mindepth 1 -maxdepth 1 \
             ! -name ".git" \
@@ -52,11 +60,14 @@ jobs:
             ! -name "$(basename "$ZIP")" \
             -exec rm -rf {} +
 
-      - name: Copy new project to repository root
+      - name: Copy new project
         run: |
+          echo "Copying from:"
+          echo "$PROJECT_DIR"
+
           cp -a "$PROJECT_DIR"/. .
 
-      - name: Remove ZIP and temporary files
+      - name: Remove ZIP
         run: |
           rm -f "$ZIP"
           rm -rf extracted
@@ -68,9 +79,9 @@ jobs:
 
           git add -A
 
-          git diff --cached --quiet || \
+          if git diff --cached --quiet; then
+            echo "No changes detected"
+          else
             git commit -m "Replace all project files with new version"
-
-      - name: Push changes
-        run: |
-          git push
+            git push
+          fi
