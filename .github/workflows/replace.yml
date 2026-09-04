@@ -11,15 +11,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find ZIP
+      - name: Find ZIP file
         run: |
           ZIP=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
 
-      - name: Remove old files
+          if [ -z "$ZIP" ]; then
+            echo "No ZIP file found!"
+            exit 1
+          fi
+
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "Found: $ZIP"
+
+      - name: Extract ZIP
+        run: |
+          rm -rf extracted
+          mkdir extracted
+          unzip -q "$ZIP" -d extracted
+
+      - name: Find project folder
+        run: |
+          PROJECT_DIR=$(find extracted -type f -name "pubspec.yaml" -printf '%h\n' | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "pubspec.yaml not found inside ZIP!"
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project found at: $PROJECT_DIR"
+
+      - name: Remove old project files
         run: |
           find . -mindepth 1 -maxdepth 1 \
             ! -name ".git" \
@@ -27,14 +52,25 @@ jobs:
             ! -name "$(basename "$ZIP")" \
             -exec rm -rf {} +
 
-      - name: Extract new files
+      - name: Copy new project to repository root
         run: |
-          unzip -o "$ZIP" -d .
+          cp -a "$PROJECT_DIR"/. .
 
-      - name: Commit and Push
+      - name: Remove ZIP and temporary files
+        run: |
+          rm -f "$ZIP"
+          rm -rf extracted
+
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add -A
-          git commit -m "Replace files from ZIP" || echo "No changes"
+
+          git diff --cached --quiet || \
+            git commit -m "Replace all project files with new version"
+
+      - name: Push changes
+        run: |
           git push
