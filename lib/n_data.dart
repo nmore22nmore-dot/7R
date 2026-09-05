@@ -162,6 +162,8 @@ class NConversation {
 class NData extends ChangeNotifier {
   NData();
 
+  void refreshListeners() => notifyListeners();
+
   final SupabaseClient supabase = Supabase.instance.client;
 
   String name = 'مستخدم N';

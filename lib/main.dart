@@ -939,7 +939,7 @@ class _ShortVideoCardState extends State<ShortVideoCard> {
                                 leading: CircleAvatar(backgroundImage: (profile['avatar_url'] as String?)?.isNotEmpty == true ? NetworkImage(profile['avatar_url']) : null, child: (profile['avatar_url'] as String?)?.isNotEmpty == true ? null : const Icon(Icons.person)),
                                 title: Text('@${profile['username'] ?? 'مستخدم'}'),
                                 subtitle: Text(c['text']?.toString() ?? ''),
-                                trailing: mine ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: () async { if (await data.deleteComment(c['id'].toString())) { setSheetState(() => comments.removeAt(i)); if (widget.post.comments > 0) widget.post.comments--; data.notifyListeners(); } }) : null,
+                                trailing: mine ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: () async { if (await data.deleteComment(c['id'].toString())) { setSheetState(() => comments.removeAt(i)); if (widget.post.comments > 0) widget.post.comments--; data.refreshListeners(); } }) : null,
                               );
                             })),
                       Row(children: [
