@@ -38,6 +38,13 @@ jobs:
           sdkmanager "ndk;28.2.13676358"
           yes | sdkmanager --licenses || true
 
+      - name: Restore release keystore
+        env:
+          CM_KEYSTORE_BASE64: ${{ secrets.CM_KEYSTORE_BASE64 }}
+        run: |
+          echo "$CM_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/android/app/release-keystore.p12"
+          chmod 600 "$GITHUB_WORKSPACE/android/app/release-keystore.p12"
+
       - name: Flutter version
         run: flutter --version
 
@@ -48,6 +55,11 @@ jobs:
         run: flutter analyze
 
       - name: Build release APK
+        env:
+          CM_KEYSTORE_PATH: ${{ github.workspace }}/android/app/release-keystore.p12
+          CM_KEYSTORE_PASSWORD: ${{ secrets.CM_KEYSTORE_PASSWORD }}
+          CM_KEY_ALIAS: ${{ secrets.CM_KEY_ALIAS }}
+          CM_KEY_PASSWORD: ${{ secrets.CM_KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Upload APK

@@ -4,3 +4,5 @@ android/.gradle/
 android/local.properties
 .flutter-plugins
 .flutter-plugins-dependencies
+
+android/app/release-keystore.p12
