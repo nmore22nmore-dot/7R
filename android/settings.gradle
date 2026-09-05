@@ -1,0 +1,58 @@
+pluginManagement {
+def flutterSdkPath = {
+def properties = new Properties()
+def localPropertiesFile = file("local.properties")
+
+    if (!localPropertiesFile.exists()) {
+        throw new GradleException("local.properties is missing")
+    }
+
+    localPropertiesFile.withInputStream {
+        properties.load(it)
+    }
+
+    def flutterSdkPath = properties.getProperty("flutter.sdk")
+
+    if (flutterSdkPath == null || flutterSdkPath.trim().isEmpty()) {
+        throw new GradleException("flutter.sdk is not set in local.properties")
+    }
+
+    return flutterSdkPath
+}()
+
+includeBuild("${flutterSdkPath}/packages/flutter_tools/gradle")
+
+repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+}
+
+plugins {
+id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+id "com.android.application" version "8.11.1" apply false
+id "org.jetbrains.kotlin.android" version "2.2.20" apply false
+}
+
+dependencyResolutionManagement {
+repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+
+String storageUrl = System.getenv("FLUTTER_STORAGE_BASE_URL")
+    ?: "https://storage.googleapis.com"
+
+repositories {
+    google()
+    mavenCentral()
+
+    maven {
+        url = uri("$storageUrl/download.flutter.io")
+    }
+}
+
+}
+
+rootProject.name = "N"
+
+include(":app")

@@ -1,0 +1,18 @@
+[32mopenjdk-21[0m/stable,now 21.0.11 aarch64 [installed]
+  Java development kit and runtime
+
+[32mopenjdk-21-source[0m/stable 21.0.11 all
+  Source files for openjdk-21
+
+[32mopenjdk-21-x[0m/stable,now 21.0.11 aarch64 [installed,automatic]
+  Portion of openjdk-21 requiring X11 functionality
+
+[32mopenjdk-25[0m/stable 25.0.3 aarch64
+  Java development kit and runtime
+
+[32mopenjdk-25-source[0m/stable 25.0.3 all
+  Source files for openjdk-25
+
+[32mopenjdk-25-x[0m/stable 25.0.3 aarch64
+  Portion of openjdk-25 requiring X11 functionality
+
