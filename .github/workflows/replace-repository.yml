@@ -1,0 +1,92 @@
+name: Replace repository from ZIP
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_name:
+        description: "ZIP file name at repository root"
+        required: true
+        default: "N-production-4.0.0.zip"
+
+permissions:
+  contents: write
+
+jobs:
+  replace-repository:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Replace repository contents
+        env:
+          ZIP_NAME: ${{ inputs.zip_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Checking ZIP: $ZIP_NAME"
+
+          if [ ! -f "$ZIP_NAME" ]; then
+            echo "ERROR: ZIP file not found at repository root: $ZIP_NAME"
+            exit 1
+          fi
+
+          TMP_DIR="$(mktemp -d)"
+          EXTRACT_DIR="$TMP_DIR/extracted"
+          mkdir -p "$EXTRACT_DIR"
+
+          echo "Extracting ZIP..."
+          unzip -q "$ZIP_NAME" -d "$EXTRACT_DIR"
+
+          # If the ZIP contains one top-level folder, use that folder
+          # as the project root. Otherwise use the extracted directory.
+          shopt -s dotglob nullglob
+          entries=("$EXTRACT_DIR"/*)
+
+          if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
+            SOURCE_DIR="${entries[0]}"
+          else
+            SOURCE_DIR="$EXTRACT_DIR"
+          fi
+
+          echo "Project source: $SOURCE_DIR"
+
+          # Remove the old repository contents while preserving:
+          # .git       -> Git history
+          # .github    -> this workflow
+          # ZIP file   -> removed after successful replacement
+          find . -mindepth 1 -maxdepth 1             ! -name ".git"             ! -name ".github"             ! -name "$ZIP_NAME"             -exec rm -rf {} +
+
+          echo "Copying new project..."
+          cp -a "$SOURCE_DIR"/. .
+
+          # Do not keep the large source ZIP in the final repository.
+          rm -f "$ZIP_NAME"
+
+          echo "New repository contents:"
+          find . -maxdepth 2 -type f | sort | head -300
+
+          echo "Cleaning temporary files..."
+          rm -rf "$TMP_DIR"
+
+      - name: Commit and push replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes detected."
+            exit 0
+          fi
+
+          git commit -m "Replace repository with N production 4.0.0"
+          git push
