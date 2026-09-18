@@ -620,7 +620,7 @@ class _ShellState extends State<Shell> {
     HomePage(),
     FollowingPage(),
     PublishPage(),
-    LivePage(),
+    MessagesPage(),
     ProfilePage(),
   ];
 
@@ -657,7 +657,7 @@ class _ShellState extends State<Shell> {
                 Expanded(
                   child: Center(
                     child: GestureDetector(
-                      onTap: () => setState(() => index = 2),
+                      onTap: _openCreateMenu,
                       child: Container(
                         width: 54,
                         height: 46,
@@ -682,11 +682,68 @@ class _ShellState extends State<Shell> {
                     ),
                   ),
                 ),
-                _navItem(3, Icons.sensors_outlined, Icons.sensors, 'البث المباشر'),
+                _navItem(3, Icons.mail_outline, Icons.mail, 'الرسائل'),
                 _navItem(4, Icons.person_outline, Icons.person, 'الملف الشخصي'),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  void _openCreateMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: panel,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _createAction(Icons.video_call, 'فيديو', () {
+                Navigator.pop(context);
+                setState(() => index = 2);
+              }),
+              _createAction(Icons.image_outlined, 'صورة', () {
+                Navigator.pop(context);
+                setState(() => index = 2);
+              }),
+              _createAction(Icons.sensors, 'بث مباشر', () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const LivePage()));
+              }),
+              _createAction(Icons.auto_awesome, 'N AI', () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const AiPage()));
+              }),
+              _createAction(Icons.history_toggle_off, 'قصة', () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('إضافة القصص قيد الربط مع التخزين.')));
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _createAction(IconData icon, String title, VoidCallback onTap) {
+    return SizedBox(
+      width: 92,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(children: [
+            CircleAvatar(radius: 28, backgroundColor: const Color(0xFF202833), child: Icon(icon, color: cyan)),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ]),
         ),
       ),
     );
@@ -1828,6 +1885,34 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (_) {}
   }
 
+  Future<void> _editProfile(BuildContext context) async {
+    final username = TextEditingController(text: p?['username'] ?? '');
+    final bio = TextEditingController(text: p?['bio'] ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('تعديل الملف الشخصي'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: username, decoration: const InputDecoration(labelText: 'اسم المستخدم')),
+          const SizedBox(height: 12),
+          TextField(controller: bio, maxLines: 3, decoration: const InputDecoration(labelText: 'النبذة')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حفظ')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await sb.from('profiles').update({'username': username.text.trim(), 'bio': bio.text.trim()}).eq('id', sb.auth.currentUser!.id);
+      await load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الملف: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1835,10 +1920,8 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Text('الملف الشخصي'),
         actions: [
           IconButton(
-            onPressed: () {
-              sb.auth.signOut();
-            },
-            icon: const Icon(Icons.logout),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
+            icon: const Icon(Icons.settings_outlined),
           ),
         ],
       ),
@@ -1864,6 +1947,12 @@ class _ProfilePageState extends State<ProfilePage> {
             Text(
               p?['bio'] ?? '',
             ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => _editProfile(context),
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('تعديل الملف الشخصي'),
+            ),
             const SizedBox(height: 20),
             const Text(
               'منشوراتي',
@@ -1877,4 +1966,45 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
+}
+
+
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('الإعدادات والخصوصية')),
+    body: ListView(children: [
+      ListTile(leading: const Icon(Icons.lock_outline), title: const Text('الخصوصية'), onTap: () {}),
+      ListTile(leading: const Icon(Icons.notifications_none), title: const Text('الإشعارات'), onTap: () {}),
+      ListTile(leading: const Icon(Icons.security_outlined), title: const Text('الأمان والحساب'), onTap: () {}),
+      ListTile(leading: const Icon(Icons.language), title: const Text('اللغة'), subtitle: const Text('العربية'), onTap: () {}),
+      const Divider(),
+      ListTile(leading: const Icon(Icons.logout), title: const Text('تسجيل الخروج'), onTap: () async { await sb.auth.signOut(); if (context.mounted) Navigator.pop(context); }),
+    ]),
+  );
+}
+
+class AiPage extends StatefulWidget {
+  const AiPage({super.key});
+  @override State<AiPage> createState() => _AiPageState();
+}
+class _AiPageState extends State<AiPage> {
+  final ctrl = TextEditingController();
+  final messages = <Map<String,String>>[];
+  bool busy = false;
+  Future<void> send() async {
+    final text = ctrl.text.trim(); if (text.isEmpty || busy) return;
+    setState(() { messages.add({'role':'user','text':text}); ctrl.clear(); busy=true; });
+    // The UI is ready; the actual model call must be routed through a protected backend/Edge Function.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (!mounted) return;
+    setState(() { busy=false; messages.add({'role':'ai','text':'N AI يحتاج ربط خدمة الذكاء الاصطناعي الآمنة من الخادم قبل أن أرسل طلبات حقيقية.'}); });
+  }
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('N AI')),
+    body: Column(children: [
+      Expanded(child: ListView.builder(padding: const EdgeInsets.all(16), itemCount: messages.length, itemBuilder: (_,i) => Align(alignment: messages[i]['role']=='user'?Alignment.centerRight:Alignment.centerLeft, child: Container(margin: const EdgeInsets.only(bottom:10), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: panel,borderRadius: BorderRadius.circular(16)), child: Text(messages[i]['text']!))))),
+      SafeArea(child: Row(children: [Expanded(child: TextField(controller: ctrl, minLines:1, maxLines:4, decoration: const InputDecoration(hintText:'اكتب لـ N AI'))), IconButton(onPressed: busy?null:send, icon: const Icon(Icons.send))]))
+    ]),
+  );
 }

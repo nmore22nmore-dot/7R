@@ -29,12 +29,12 @@ workflows:
             cp "assets/branding/android/mipmap-$d/ic_launcher.png"               "android/app/src/main/res/mipmap-$d/ic_launcher_round.png"
           done
 
+          # Required Android permissions for networking, media capture and upload.
+          python3 -c 'from pathlib import Path; p=Path("android/app/src/main/AndroidManifest.xml"); s=p.read_text(); perms=["<uses-permission android:name=\"android.permission.INTERNET\" />","<uses-permission android:name=\"android.permission.CAMERA\" />","<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />"]; marker="<application"; s=s if all(x in s for x in perms) else s.replace(marker, "\n".join(x for x in perms if x not in s)+"\n"+marker,1); p.write_text(s)'
+
           # Ensure the Android application name and launcher reference are N.
           sed -i.bak 's/android:label="[^"]*"/android:label="N"/' android/app/src/main/AndroidManifest.xml || true
           rm -f android/app/src/main/AndroidManifest.xml.bak
-
-          # Release APKs need explicit Android Internet permission for Supabase/Auth/network calls.
-          python3 -c 'from pathlib import Path; p=Path("android/app/src/main/AndroidManifest.xml"); s=p.read_text(); perm="    <uses-permission android:name=\"android.permission.INTERNET\" />\n"; p.write_text(s if "android.permission.INTERNET" in s else s.replace("<application", perm+"    <application", 1))'
 
           # Register the Supabase auth callback used by email confirmation/password recovery.
           python3 -c 'from pathlib import Path; p=Path("android/app/src/main/AndroidManifest.xml"); s=p.read_text(); b="<intent-filter>\n                <action android:name=\"android.intent.action.VIEW\" />\n                <category android:name=\"android.intent.category.DEFAULT\" />\n                <category android:name=\"android.intent.category.BROWSABLE\" />\n                <data android:scheme=\"n\" android:host=\"auth-callback\" />\n            </intent-filter>"; p.write_text(s.replace("</activity>", b+"\n        </activity>", 1) if "android:scheme=\"n\"" not in s else s)'
