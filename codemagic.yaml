@@ -1,0 +1,20 @@
+workflows:
+  n_android_release:
+    name: N Android Release
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - N_SUPABASE
+        - keystore_credentials
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Flutter pub get
+        script: flutter pub get
+      - name: Analyze
+        script: flutter analyze
+      - name: Build APK
+        script: |
+          flutter build apk --release             --dart-define=SUPABASE_URL="$SUPABASE_URL"             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
