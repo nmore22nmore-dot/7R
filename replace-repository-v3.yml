@@ -1,0 +1,96 @@
+name: Replace repository from N complete ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replace-repository:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract and replace repository
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Find ZIP files in the repository root.
+          mapfile -t zips < <(find . -maxdepth 1 -type f -name '*.zip' -printf '%f\n')
+
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "ERROR: Expected exactly one ZIP file in the repository root."
+            echo "ZIP files found:"
+            printf ' - %s\n' "${zips[@]}"
+            exit 1
+          fi
+
+          ZIP_NAME="${zips[0]}"
+          echo "Using ZIP: $ZIP_NAME"
+
+          TMP_DIR="$(mktemp -d)"
+          EXTRACT_DIR="$TMP_DIR/extracted"
+          mkdir -p "$EXTRACT_DIR"
+
+          unzip -q "$ZIP_NAME" -d "$EXTRACT_DIR"
+
+          shopt -s dotglob nullglob
+          entries=("$EXTRACT_DIR"/*)
+
+          # Support both:
+          # 1) ZIP containing the project directly
+          # 2) ZIP containing one top-level project folder
+          if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
+            SOURCE_DIR="${entries[0]}"
+          else
+            SOURCE_DIR="$EXTRACT_DIR"
+          fi
+
+          echo "Project source: $SOURCE_DIR"
+
+          # Remove the old repository contents while preserving GitHub Actions.
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name ".git" \
+            ! -name ".github" \
+            ! -name "$ZIP_NAME" \
+            -exec rm -rf {} +
+
+          # Copy the new project into the repository root.
+          cp -a "$SOURCE_DIR"/. .
+
+          # Remove the uploaded ZIP after replacement.
+          rm -f "$ZIP_NAME"
+          rm -rf "$TMP_DIR"
+
+          # Verify that this is a Flutter project.
+          test -f pubspec.yaml
+          test -d lib
+          test -d supabase
+          test -f codemagic.yaml
+
+          echo "Flutter project structure verified successfully."
+          echo "Repository replacement completed."
+
+      - name: Commit and push changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes detected."
+            exit 0
+          fi
+
+          git commit -m "Replace repository with N complete project"
+          git push
