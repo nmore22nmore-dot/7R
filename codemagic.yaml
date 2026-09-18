@@ -6,15 +6,32 @@ workflows:
       groups:
         - N_SUPABASE
         - keystore_credentials
-      flutter: stable
-      java: 17
+      vars:
+        FLUTTER_VERSION: stable
     scripts:
+      - name: Ensure Android project exists
+        script: |
+          if [ ! -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
+            flutter create --platforms=android --org com.n .
+          fi
+      - name: Configure Android
+        script: |
+          mkdir -p android/app/src/main
+          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
+            echo "Android project was not generated correctly"
+            exit 1
+          fi
       - name: Flutter pub get
         script: flutter pub get
       - name: Analyze
         script: flutter analyze
+      - name: Test
+        script: flutter test
       - name: Build APK
         script: |
-          flutter build apk --release             --dart-define=SUPABASE_URL="$SUPABASE_URL"             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/bundle/release/*.aab

@@ -1,8 +1,0 @@
-.dart_tool/
-build/
-.pub/
-.idea/
-.vscode/
-*.iml
-.env
-.env.*

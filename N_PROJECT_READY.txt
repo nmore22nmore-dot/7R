@@ -1,1 +1,0 @@
-N project ready for Supabase/Codemagic. No secret keys included.
