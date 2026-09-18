@@ -76,6 +76,7 @@ create table if not exists public.messages (
   sender_id uuid references auth.users(id) on delete cascade,
   body text default '',
   media_url text,
+  media_type text check(media_type in ('image','video') or media_type is null),
   created_at timestamptz default now()
 );
 
@@ -222,3 +223,39 @@ create policy "N post media public read"
 on storage.objects for select
 to public
 using (bucket_id = 'post-media');
+
+
+-- N message media: attachments sent inside conversations.
+alter table public.messages add column if not exists media_type text;
+
+insert into storage.buckets (id, name, public)
+values ('message-media', 'message-media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "N message media upload" on storage.objects;
+create policy "N message media upload"
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'message-media'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "N message media public read" on storage.objects;
+create policy "N message media public read"
+on storage.objects for select
+to public
+using (bucket_id = 'message-media');
+
+drop policy if exists "N message media update" on storage.objects;
+create policy "N message media update"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'message-media' and owner_id = auth.uid())
+with check (bucket_id = 'message-media' and owner_id = auth.uid());
+
+drop policy if exists "N message media delete" on storage.objects;
+create policy "N message media delete"
+on storage.objects for delete
+to authenticated
+using (bucket_id = 'message-media' and owner_id = auth.uid());

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ const bg = Color(0xFF07080D);
 const panel = Color(0xFF11131B);
 const cyan = Color(0xFF00C8FF);
 const pink = Color(0xFFFF287A);
+const authRedirectUrl = 'n://auth-callback';
 
 class NApp extends StatelessWidget {
   final bool configError;
@@ -96,18 +98,136 @@ class ConfigPage extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<AuthState>(
-      stream: sb.auth.onAuthStateChange,
-      builder: (_, snap) {
-        return sb.auth.currentSession == null
-            ? const AuthPage()
-            : const Shell();
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool passwordRecovery = false;
+  late final StreamSubscription<AuthState> _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = sb.auth.onAuthStateChange.listen(
+      (data) {
+        if (!mounted) return;
+        setState(() {
+          passwordRecovery = data.event == AuthChangeEvent.passwordRecovery;
+        });
       },
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (passwordRecovery) return const UpdatePasswordPage();
+    return sb.auth.currentSession == null ? const AuthPage() : const Shell();
+  }
+}
+
+class UpdatePasswordPage extends StatefulWidget {
+  const UpdatePasswordPage({super.key});
+
+  @override
+  State<UpdatePasswordPage> createState() => _UpdatePasswordPageState();
+}
+
+class _UpdatePasswordPageState extends State<UpdatePasswordPage> {
+  final password = TextEditingController();
+  final confirm = TextEditingController();
+  bool busy = false;
+  bool obscure = true;
+  String? message;
+
+  Future<void> updatePassword() async {
+    final p = password.text;
+    if (p.length < 6 || p != confirm.text) {
+      setState(() => message = 'تأكد من أن كلمة المرور 6 أحرف على الأقل ومتطابقة.');
+      return;
+    }
+    setState(() { busy = true; message = null; });
+    try {
+      await sb.auth.updateUser(UserAttributes(password: p));
+      if (mounted) {
+        setState(() => message = 'تم تغيير كلمة المرور بنجاح.');
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      if (mounted) setState(() => message = 'تعذر تغيير كلمة المرور: $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    password.dispose();
+    confirm.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('تعيين كلمة مرور جديدة')),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Column(
+                children: [
+                  const Icon(Icons.lock_reset, size: 72, color: cyan),
+                  const SizedBox(height: 18),
+                  const Text('أدخل كلمة المرور الجديدة', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 22),
+                  TextField(
+                    controller: password,
+                    obscureText: obscure,
+                    decoration: InputDecoration(
+                      labelText: 'كلمة المرور الجديدة',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirm,
+                    obscureText: obscure,
+                    decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور', prefixIcon: Icon(Icons.lock_outline)),
+                  ),
+                  if (message != null) ...[
+                    const SizedBox(height: 14),
+                    Text(message!, textAlign: TextAlign.center, style: const TextStyle(color: cyan)),
+                  ],
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity, height: 52,
+                    child: FilledButton(
+                      onPressed: busy ? null : updatePassword,
+                      child: Text(busy ? 'جارٍ الحفظ...' : 'حفظ كلمة المرور'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -186,6 +306,7 @@ class _AuthPageState extends State<AuthPage> {
           email: e,
           password: p,
           data: {'username': u},
+          emailRedirectTo: authRedirectUrl,
         );
 
         if (r.user == null) {
@@ -228,7 +349,7 @@ class _AuthPageState extends State<AuthPage> {
     });
 
     try {
-      await sb.auth.resetPasswordForEmail(e);
+      await sb.auth.resetPasswordForEmail(e, redirectTo: authRedirectUrl);
       if (mounted) {
         setState(() => error = 'تم إرسال رابط استعادة كلمة المرور إلى بريدك.');
       }
@@ -1511,8 +1632,9 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final ctrl = TextEditingController();
-
   List<Map<String, dynamic>> msgs = [];
+  XFile? attachment;
+  bool sending = false;
 
   @override
   void initState() {
@@ -1522,98 +1644,145 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> load() async {
     try {
-      final x = await sb
-          .from('messages')
-          .select()
-          .eq(
-            'conversation_id',
-            widget.id,
-          )
-          .order('created_at');
+      final x = await sb.from('messages').select().eq('conversation_id', widget.id).order('created_at');
+      if (mounted) setState(() => msgs = List<Map<String, dynamic>>.from(x));
+    } catch (e) {
+      if (mounted) _showError('تعذر تحميل الرسائل: $e');
+    }
+  }
 
-      if (mounted) {
-        setState(() {
-          msgs = List<Map<String, dynamic>>.from(x);
-        });
-      }
-    } catch (_) {}
+  Future<void> pickAttachment() async {
+    try {
+      final x = await ImagePicker().pickMedia();
+      if (x != null && mounted) setState(() => attachment = x);
+    } catch (e) {
+      if (mounted) _showError('تعذر اختيار الملف: $e');
+    }
   }
 
   Future<void> send() async {
     final body = ctrl.text.trim();
-
-    if (body.isEmpty) {
-      return;
-    }
-
+    if (body.isEmpty && attachment == null) return;
     final user = sb.auth.currentUser;
+    if (user == null) return;
 
-    if (user == null) {
-      return;
-    }
-
+    setState(() => sending = true);
     try {
+      String? mediaUrl;
+      String? mediaType;
+      if (attachment != null) {
+        final ext = attachment!.path.split('.').last.toLowerCase().split('?').first;
+        final isVideo = {'mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv'}.contains(ext);
+        mediaType = isVideo ? 'video' : 'image';
+        final safeExt = ext.isEmpty ? (isVideo ? 'mp4' : 'jpg') : ext;
+        final path = '${user.id}/${widget.id}/${DateTime.now().millisecondsSinceEpoch}.$safeExt';
+        await sb.storage.from('message-media').upload(path, File(attachment!.path));
+        mediaUrl = sb.storage.from('message-media').getPublicUrl(path);
+      }
+
       await sb.from('messages').insert({
         'conversation_id': widget.id,
         'sender_id': user.id,
         'body': body,
+        'media_url': mediaUrl,
+        'media_type': mediaType,
       });
+      await sb.from('conversations').update({
+        'last_message': mediaUrl == null ? body : (body.isEmpty ? '📎 ملف مرفق' : '📎 $body'),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', widget.id);
 
       ctrl.clear();
+      if (mounted) setState(() => attachment = null);
       await load();
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) _showError('فشل إرسال الرسالة: $e');
+    } finally {
+      if (mounted) setState(() => sending = false);
+    }
+  }
+
+  void _showError(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  @override
+  void dispose() {
+    ctrl.dispose();
+    super.dispose();
+  }
+
+  Widget _messageMedia(Map<String, dynamic> m) {
+    final url = (m['media_url'] ?? '').toString();
+    if (url.isEmpty) return const SizedBox.shrink();
+    final type = (m['media_type'] ?? '').toString();
+    if (type == 'image') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 7),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.network(url, width: 220, height: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Text('تعذر عرض الصورة')),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(mainAxisSize: MainAxisSize.min, children: const [Icon(Icons.videocam_outlined), SizedBox(width: 6), Text('فيديو مرفق')]),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final currentUserId = sb.auth.currentUser?.id;
-
-    final messageWidgets = msgs.map<Widget>((m) {
-      final isMine = m['sender_id'] == currentUserId;
-
-      return Align(
-        alignment:
-            isMine ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: const EdgeInsets.all(6),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: panel,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Text(
-            m['body'] ?? '',
-          ),
-        ),
-      );
-    }).toList();
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('محادثة N'),
-      ),
+      appBar: AppBar(title: const Text('محادثة N')),
       body: Column(
         children: [
           Expanded(
             child: ListView(
-              children: messageWidgets,
+              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              children: msgs.map<Widget>((m) {
+                final isMine = m['sender_id'] == currentUserId;
+                return Align(
+                  alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 300),
+                    margin: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(14)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _messageMedia(m),
+                        if ((m['body'] ?? '').toString().isNotEmpty) Text(m['body'].toString()),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: ctrl,
-                  decoration: const InputDecoration(
-                    hintText: 'اكتب رسالة...',
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: send,
-                icon: const Icon(Icons.send),
-              ),
-            ],
+          if (attachment != null)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                const Icon(Icons.attach_file),
+                const SizedBox(width: 8),
+                Expanded(child: Text(attachment!.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                IconButton(onPressed: sending ? null : () => setState(() => attachment = null), icon: const Icon(Icons.close)),
+              ]),
+            ),
+          SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                IconButton(onPressed: sending ? null : pickAttachment, icon: const Icon(Icons.attach_file)),
+                Expanded(child: TextField(controller: ctrl, enabled: !sending, decoration: const InputDecoration(hintText: 'اكتب رسالة...', border: InputBorder.none))),
+                IconButton(onPressed: sending ? null : send, icon: const Icon(Icons.send)),
+              ],
+            ),
           ),
         ],
       ),
