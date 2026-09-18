@@ -22,17 +22,53 @@ class NApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: cyan,
+      brightness: Brightness.dark,
+    ).copyWith(
+      primary: cyan,
+      secondary: pink,
+      surface: panel,
+    );
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'N',
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: bg,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: cyan,
-          brightness: Brightness.dark,
-        ),
+        colorScheme: scheme,
         useMaterial3: true,
+        fontFamily: 'sans',
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF10131A),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFF252B36)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFF252B36)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: cyan, width: 1.4),
+          ),
+          labelStyle: const TextStyle(color: Colors.white70),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: bg,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF0B0D13),
+          indicatorColor: const Color(0xFF17202A),
+          labelTextStyle: WidgetStatePropertyAll(
+            TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          ),
+        ),
       ),
       home: configError ? const ConfigPage() : const AuthGate(),
     );
@@ -50,7 +86,7 @@ class ConfigPage extends StatelessWidget {
           padding: EdgeInsets.all(24),
           child: Text(
             'إعداد Supabase غير مكتمل.\n'
-            'أضف SUPABASE_URL و SUPABASE_PUBLISHABLE_KEY في إعدادات البناء.',
+            'أضف SUPABASE_PUBLISHABLE_KEY في إعدادات البناء. رابط N مضمّن افتراضيًا، ويمكن تغييره عبر SUPABASE_URL.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 18),
           ),
@@ -90,9 +126,46 @@ class _AuthPageState extends State<AuthPage> {
 
   bool signup = false;
   bool busy = false;
+  bool obscure = true;
   String? error;
 
+  String _authMessage(Object e) {
+    final raw = e.toString().replaceFirst('AuthException: ', '');
+    final lower = raw.toLowerCase();
+
+    if (lower.contains('invalid login credentials')) {
+      return 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+    }
+    if (lower.contains('email not confirmed')) {
+      return 'البريد الإلكتروني غير مؤكد. افتح رسالة التأكيد ثم حاول تسجيل الدخول.';
+    }
+    if (lower.contains('user already registered')) {
+      return 'هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول.';
+    }
+    if (lower.contains('password')) {
+      return 'كلمة المرور غير صالحة أو قصيرة.';
+    }
+    if (lower.contains('network') || lower.contains('socket')) {
+      return 'تعذر الاتصال بالخادم. تحقق من الإنترنت وإعدادات Supabase.';
+    }
+    return raw.isEmpty ? 'حدث خطأ غير معروف.' : raw;
+  }
+
   Future<void> submit() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final e = email.text.trim();
+    final p = pass.text;
+
+    if (e.isEmpty || !e.contains('@')) {
+      setState(() => error = 'أدخل بريدًا إلكترونيًا صحيحًا.');
+      return;
+    }
+    if (p.length < 6) {
+      setState(() => error = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.');
+      return;
+    }
+
     setState(() {
       busy = true;
       error = null;
@@ -105,125 +178,311 @@ class _AuthPageState extends State<AuthPage> {
         if (u.length < 4) {
           throw Exception('اسم المستخدم يجب أن يكون 4 أحرف أو أكثر.');
         }
+        if (!RegExp(r'^[A-Za-z0-9_]+$').hasMatch(u)) {
+          throw Exception('اسم المستخدم يقبل الحروف الإنجليزية والأرقام والشرطة السفلية فقط.');
+        }
 
         final r = await sb.auth.signUp(
-          email: email.text.trim(),
-          password: pass.text,
-          data: {
-            'username': u,
-          },
+          email: e,
+          password: p,
+          data: {'username': u},
         );
 
-        if (r.session == null) {
-          error =
-              'تم إنشاء الحساب. تحقق من بريدك الإلكتروني ثم سجّل الدخول.';
+        if (r.user == null) {
+          throw Exception('تعذر إنشاء الحساب.');
+        }
+
+        if (r.session == null && mounted) {
+          setState(() {
+            error = 'تم إنشاء الحساب. تحقق من بريدك الإلكتروني ثم سجّل الدخول.';
+            signup = false;
+          });
         }
       } else {
         await sb.auth.signInWithPassword(
-          email: email.text.trim(),
-          password: pass.text,
+          email: e,
+          password: p,
         );
       }
     } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
+      if (mounted) {
+        setState(() => error = _authMessage(e));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => busy = false);
+      }
+    }
+  }
+
+  Future<void> resetPassword() async {
+    final e = email.text.trim();
+    if (e.isEmpty || !e.contains('@')) {
+      setState(() => error = 'أدخل بريدك الإلكتروني أولًا لاستعادة كلمة المرور.');
+      return;
     }
 
-    if (mounted) {
-      setState(() {
-        busy = false;
-      });
+    setState(() {
+      busy = true;
+      error = null;
+    });
+
+    try {
+      await sb.auth.resetPasswordForEmail(e);
+      if (mounted) {
+        setState(() => error = 'تم إرسال رابط استعادة كلمة المرور إلى بريدك.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = _authMessage(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
   }
 
   @override
+  void dispose() {
+    email.dispose();
+    pass.dispose();
+    username.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                const Text(
-                  'N',
-                  style: TextStyle(
-                    fontSize: 80,
-                    fontWeight: FontWeight.w900,
-                    color: cyan,
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [
+                      Color(0xFF06131A),
+                      Color(0xFF07080D),
+                      Color(0xFF14070E),
+                    ],
                   ),
                 ),
-                Text(
-                  signup ? 'إنشاء حساب' : 'تسجيل الدخول',
-                  style: const TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                if (signup)
-                  TextField(
-                    controller: username,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم المستخدم',
-                      prefixIcon: Icon(Icons.alternate_email),
-                    ),
-                  ),
-                if (signup) const SizedBox(height: 12),
-                TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'البريد الإلكتروني',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: pass,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'كلمة المرور',
-                  ),
-                ),
-                const SizedBox(height: 18),
-                if (error != null)
-                  Text(
-                    error!,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: busy ? null : submit,
-                    child: Text(
-                      busy
-                          ? '...'
-                          : signup
-                              ? 'إنشاء الحساب'
-                              : 'دخول',
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      signup = !signup;
-                    });
-                  },
-                  child: Text(
-                    signup ? 'لدي حساب بالفعل' : 'إنشاء حساب جديد',
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+            Positioned(
+              top: -120,
+              right: -80,
+              child: _glow(cyan, 260),
+            ),
+            Positioned(
+              bottom: -150,
+              left: -90,
+              child: _glow(pink, 300),
+            ),
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 28,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Column(
+                      children: [
+                        Image.asset(
+                          'assets/branding/n_icon.png',
+                          width: 112,
+                          height: 112,
+                          fit: BoxFit.cover,
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'N',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          signup ? 'أنشئ حسابك في N' : 'مرحبًا بك في N',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'منصة اجتماعية عربية للفيديو القصير',
+                          style: TextStyle(color: Colors.white60),
+                        ),
+                        const SizedBox(height: 26),
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            color: const Color(0xCC0D1017),
+                            borderRadius: BorderRadius.circular(26),
+                            border: Border.all(
+                              color: const Color(0xFF26303A),
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                blurRadius: 35,
+                                spreadRadius: 1,
+                                color: Color(0x55000000),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              if (signup) ...[
+                                TextField(
+                                  controller: username,
+                                  textDirection: TextDirection.ltr,
+                                  decoration: const InputDecoration(
+                                    labelText: 'اسم المستخدم',
+                                    prefixIcon: Icon(Icons.alternate_email),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              TextField(
+                                controller: email,
+                                keyboardType: TextInputType.emailAddress,
+                                textDirection: TextDirection.ltr,
+                                decoration: const InputDecoration(
+                                  labelText: 'البريد الإلكتروني',
+                                  prefixIcon: Icon(Icons.mail_outline),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: pass,
+                                obscureText: obscure,
+                                decoration: InputDecoration(
+                                  labelText: 'كلمة المرور',
+                                  prefixIcon: const Icon(Icons.lock_outline),
+                                  suffixIcon: IconButton(
+                                    onPressed: () => setState(() => obscure = !obscure),
+                                    icon: Icon(
+                                      obscure
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (!signup)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton(
+                                    onPressed: busy ? null : resetPassword,
+                                    child: const Text('نسيت كلمة المرور؟'),
+                                  ),
+                                ),
+                              if (error != null) ...[
+                                const SizedBox(height: 4),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: error!.contains('تم')
+                                        ? const Color(0x2210D8FF)
+                                        : const Color(0x33FF287A),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    error!,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: error!.contains('تم')
+                                          ? cyan
+                                          : Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [cyan, pink],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: FilledButton(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: Colors.transparent,
+                                      shadowColor: Colors.transparent,
+                                    ),
+                                    onPressed: busy ? null : submit,
+                                    child: Text(
+                                      busy
+                                          ? 'جارٍ المعالجة...'
+                                          : signup
+                                              ? 'إنشاء الحساب'
+                                              : 'تسجيل الدخول',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: busy
+                                    ? null
+                                    : () => setState(() {
+                                          signup = !signup;
+                                          error = null;
+                                        }),
+                                child: Text(
+                                  signup
+                                      ? 'لدي حساب بالفعل'
+                                      : 'إنشاء حساب جديد',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+Widget _glow(Color color, double size) {
+  return IgnorePointer(
+    child: Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: .18),
+            blurRadius: 120,
+            spreadRadius: 25,
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class Shell extends StatefulWidget {
@@ -240,52 +499,105 @@ class _ShellState extends State<Shell> {
     HomePage(),
     FollowingPage(),
     PublishPage(),
-    MessagesPage(),
+    LivePage(),
     ProfilePage(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: index,
-        children: pages,
-      ),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: panel,
-        selectedIndex: index,
-        onDestinationSelected: (i) {
-          setState(() {
-            index = i;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'الرئيسية',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            label: 'المتابعة',
-          ),
-          NavigationDestination(
-            icon: Icon(
-              Icons.add_circle,
-              size: 38,
-              color: cyan,
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        extendBody: true,
+        body: IndexedStack(
+          index: index,
+          children: pages,
+        ),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+          child: Container(
+            height: 70,
+            decoration: BoxDecoration(
+              color: const Color(0xF20C0F16),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: const Color(0xFF202833)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 22,
+                  offset: Offset(0, 8),
+                ),
+              ],
             ),
-            label: 'نشر',
+            child: Row(
+              children: [
+                _navItem(0, Icons.home_outlined, Icons.home, 'الرئيسية'),
+                _navItem(1, Icons.people_outline, Icons.people, 'الأصدقاء'),
+                Expanded(
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () => setState(() => index = 2),
+                      child: Container(
+                        width: 54,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [cyan, Colors.white, pink],
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x5500C8FF),
+                              blurRadius: 15,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          color: Colors.black,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                _navItem(3, Icons.sensors_outlined, Icons.sensors, 'البث المباشر'),
+                _navItem(4, Icons.person_outline, Icons.person, 'الملف الشخصي'),
+              ],
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            label: 'الرسائل',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            label: 'الملف الشخصي',
-          ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(int i, IconData normal, IconData active, String label) {
+    final selected = index == i;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => setState(() => index = i),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              selected ? active : normal,
+              color: selected ? cyan : Colors.white70,
+              size: 23,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: selected ? cyan : Colors.white70,
+                fontSize: 9.5,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -362,26 +674,97 @@ class _FeedPageState extends State<FeedPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
-          : posts.isEmpty
-              ? const Center(
-                  child: Text(
-                    'لا توجد فيديوهات بعد.\nابدأ بالنشر من زر +',
-                    textAlign: TextAlign.center,
+      body: Stack(
+        children: [
+          loading
+              ? const Center(child: CircularProgressIndicator())
+              : posts.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'لا توجد فيديوهات بعد.\nابدأ بالنشر من زر +',
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  : PageView.builder(
+                      scrollDirection: Axis.vertical,
+                      itemCount: posts.length,
+                      itemBuilder: (_, i) => VideoCard(post: posts[i]),
+                    ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () {},
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0x6610131B),
+                    ),
+                    icon: const Icon(Icons.search),
                   ),
-                )
-              : PageView.builder(
-                  scrollDirection: Axis.vertical,
-                  itemCount: posts.length,
-                  itemBuilder: (_, i) {
-                    return VideoCard(
-                      post: posts[i],
-                    );
-                  },
-                ),
+                  const Spacer(),
+                  _FeedTab(
+                    active: !widget.following,
+                    title: 'لك',
+                  ),
+                  const SizedBox(width: 22),
+                  _FeedTab(
+                    active: widget.following,
+                    title: 'متابعة',
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MessagesPage()),
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0x6610131B),
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedTab extends StatelessWidget {
+  final bool active;
+  final String title;
+
+  const _FeedTab({
+    required this.active,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: active ? FontWeight.w900 : FontWeight.w500,
+            color: active ? Colors.white : Colors.white70,
+          ),
+        ),
+        const SizedBox(height: 5),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: active ? 30 : 0,
+          height: 2.5,
+          decoration: BoxDecoration(
+            color: pink,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -519,8 +902,8 @@ class _VideoCardState extends State<VideoCard> {
             child: CircularProgressIndicator(),
           ),
         Positioned(
-          left: 16,
-          bottom: 110,
+          right: 12,
+          bottom: 120,
           child: Column(
             children: [
               IconButton(
@@ -564,9 +947,9 @@ class _VideoCardState extends State<VideoCard> {
           ),
         ),
         Positioned(
-          right: 16,
-          left: 80,
-          bottom: 30,
+          right: 18,
+          left: 88,
+          bottom: 28,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -729,6 +1112,143 @@ Future<void> showComments(
   ctrl.dispose();
 }
 
+class LivePage extends StatelessWidget {
+  const LivePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: const Text(
+          'البث المباشر',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.search),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+        children: [
+          Container(
+            height: 180,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+                colors: [Color(0xFF162733), Color(0xFF180B14)],
+              ),
+              border: Border.all(color: const Color(0xFF273541)),
+            ),
+            child: Stack(
+              children: [
+                const Center(
+                  child: Icon(
+                    Icons.sensors,
+                    color: cyan,
+                    size: 54,
+                  ),
+                ),
+                Positioned(
+                  top: 14,
+                  right: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: pink,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'LIVE',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: Text(
+                    'ابدأ بثك المباشر',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'بثوث مباشرة الآن',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          ...List.generate(
+            4,
+            (i) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: panel,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFF202833)),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 25,
+                    backgroundColor: Color(0xFF202833),
+                    child: Icon(Icons.person),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '@N_user_${i + 1}\\nبث مباشر الآن',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.visibility_outlined, size: 18),
+                  const SizedBox(width: 4),
+                  Text('${(i + 1) * 1.2}K'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _storageMessage(Object e) {
+  final raw = e.toString();
+  final lower = raw.toLowerCase();
+  if (lower.contains('row-level security') || lower.contains('not authorized') || lower.contains('permission')) {
+    return 'الرفع مرفوض من Supabase Storage. تحقق من bucket وسياسات Storage.';
+  }
+  if (lower.contains('bucket') && lower.contains('not found')) {
+    return 'مجلد post-media غير موجود في Supabase.';
+  }
+  if (lower.contains('network')) {
+    return 'تعذر الاتصال بالخادم.';
+  }
+  return raw.replaceFirst('Exception: ', '');
+}
+
 class PublishPage extends StatefulWidget {
   const PublishPage({super.key});
 
@@ -810,7 +1330,7 @@ class _PublishPageState extends State<PublishPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('فشل النشر: $e'),
+            content: Text('فشل النشر: ${_storageMessage(e)}'),
           ),
         );
       }
@@ -827,7 +1347,7 @@ class _PublishPageState extends State<PublishPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('نشر على N'),
+        title: const Text('نشر فيديو'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),

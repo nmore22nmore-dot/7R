@@ -179,3 +179,46 @@ create policy "stories read" on stories for select using(expires_at>now());
 create policy "stories own" on stories for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
 create policy "coins own" on user_coins for select using(auth.uid()=user_id);
 create policy "premium read" on premium_usernames for select using(status='available' or assigned_to=auth.uid() or public.is_admin());
+
+
+-- N Storage: bucket + policies required for video/image publishing.
+insert into storage.buckets (id, name, public)
+values ('post-media', 'post-media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "N post media upload" on storage.objects;
+create policy "N post media upload"
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'post-media'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "N post media update" on storage.objects;
+create policy "N post media update"
+on storage.objects for update
+to authenticated
+using (
+  bucket_id = 'post-media'
+  and owner_id = auth.uid()
+)
+with check (
+  bucket_id = 'post-media'
+  and owner_id = auth.uid()
+);
+
+drop policy if exists "N post media delete" on storage.objects;
+create policy "N post media delete"
+on storage.objects for delete
+to authenticated
+using (
+  bucket_id = 'post-media'
+  and owner_id = auth.uid()
+);
+
+drop policy if exists "N post media public read" on storage.objects;
+create policy "N post media public read"
+on storage.objects for select
+to public
+using (bucket_id = 'post-media');
