@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -886,12 +884,28 @@ class _UserProfilePageState extends State<UserProfilePage> {
       final data=await sb.from('posts').select().eq('user_id',widget.userId).eq('visibility','public').order('created_at',ascending:false);
       final me=sb.auth.currentUser;
       final f=me==null?null:await sb.from('follows').select('following_id').eq('follower_id',me.id).eq('following_id',widget.userId).maybeSingle();
-      if(mounted)setState(()=>{posts=List<Map<String,dynamic>>.from(data),following=f!=null});
+      if (mounted) {
+        setState(() {
+          posts = List<Map<String, dynamic>>.from(data);
+          following = f != null;
+        });
+      }
     } catch(e){ if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تحميل الملف: $e'))); }
   }
   Future<void> toggleFollow() async {
     final me=sb.auth.currentUser; if(me==null || me.id==widget.userId)return; setState(()=>busy=true);
-    try { if(following) await sb.from('follows').delete().eq('follower_id',me.id).eq('following_id',widget.userId); else await sb.from('follows').insert({'follower_id':me.id,'following_id':widget.userId}); if(mounted)setState(()=>following=!following); }
+    try {
+      if (following) {
+        await sb.from('follows').delete().eq('follower_id', me.id).eq('following_id', widget.userId);
+      } else {
+        await sb.from('follows').insert({'follower_id': me.id, 'following_id': widget.userId});
+      }
+      if (mounted) {
+        setState(() {
+          following = !following;
+        });
+      }
+    }
     catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تحديث المتابعة: $e')));} finally{if(mounted)setState(()=>busy=false);}
   }
   @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('@${widget.username}')),body:Column(children:[
@@ -1124,10 +1138,12 @@ class _VideoCardState extends State<VideoCard> {
         sb.from('post_likes').select('post_id').eq('post_id', widget.post['id']).eq('user_id', user.id).maybeSingle(),
         sb.from('saved_posts').select('post_id').eq('post_id', widget.post['id']).eq('user_id', user.id).maybeSingle(),
       ]);
-      if (mounted) setState(() {
-        liked = results[0] != null;
-        saved = results[1] != null;
-      });
+      if (mounted) {
+        setState(() {
+          liked = results[0] != null;
+          saved = results[1] != null;
+        });
+      }
     } catch (_) {}
   }
 
@@ -2090,9 +2106,11 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await sb.from('profiles').update({'username': username.text.trim(), 'bio': bio.text.trim()}).eq('id', sb.auth.currentUser!.id);
       await load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي.')));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي.')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الملف: $e')));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الملف: $e')));
     }
   }
 
