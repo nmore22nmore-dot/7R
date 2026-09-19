@@ -1031,16 +1031,14 @@ class _FeedPageState extends State<FeedPage> {
                     title: 'متابعة',
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MessagesPage()),
+                  Stack(children: [
+                    IconButton(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage())),
+                      style: IconButton.styleFrom(backgroundColor: const Color(0x6610131B)),
+                      icon: const Icon(Icons.inbox_outlined),
                     ),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0x6610131B),
-                    ),
-                    icon: const Icon(Icons.chat_bubble_outline),
-                  ),
+                    Positioned(top: 5, right: 5, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: pink, shape: BoxShape.circle))),
+                  ]),
                 ],
               ),
             ),
@@ -2048,48 +2046,43 @@ class _ChatPageState extends State<ChatPage> {
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
-
-  @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  @override State<ProfilePage> createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic>? p;
-  List<Map<String,dynamic>> myPosts = [];
+  List<Map<String, dynamic>> myPosts = [];
+  bool loading = true;
+  int tab = 0;
 
   @override
-  void initState() {
-    super.initState();
-    load();
-  }
+  void initState() { super.initState(); load(); }
 
   Future<void> load() async {
+    final user = sb.auth.currentUser;
+    if (user == null) return;
     try {
-      final user = sb.auth.currentUser;
-
-      if (user == null) {
-        return;
-      }
-
-      final x = await sb
-          .from('profiles')
-          .select()
-          .eq('id', user.id)
-          .maybeSingle();
-
-      final posts = await sb.from('posts').select().eq('user_id', user.id).order('created_at', ascending: false);
-      if (mounted) {
-        setState(() { p = x; myPosts = List<Map<String,dynamic>>.from(posts); });
-      }
-    } catch (_) {}
+      final results = await Future.wait([
+        sb.from('profiles').select().eq('id', user.id).maybeSingle(),
+        sb.from('posts').select().eq('user_id', user.id).order('created_at', ascending: false),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        p = results[0] as Map<String, dynamic>?;
+        myPosts = List<Map<String, dynamic>>.from(results[1] as List);
+        loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
-  Future<void> _editProfile(BuildContext context) async {
+  Future<void> _editProfile() async {
     final username = TextEditingController(text: p?['username'] ?? '');
     final bio = TextEditingController(text: p?['bio'] ?? '');
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('تعديل الملف الشخصي'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: username, decoration: const InputDecoration(labelText: 'اسم المستخدم')),
@@ -2097,8 +2090,8 @@ class _ProfilePageState extends State<ProfilePage> {
           TextField(controller: bio, maxLines: 3, decoration: const InputDecoration(labelText: 'النبذة')),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حفظ')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حفظ')),
         ],
       ),
     );
@@ -2107,7 +2100,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await sb.from('profiles').update({'username': username.text.trim(), 'bio': bio.text.trim()}).eq('id', sb.auth.currentUser!.id);
       await load();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي')));
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الملف: $e')));
@@ -2116,90 +2109,116 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final username = (p?['username'] ?? 'N').toString();
+    final bio = (p?['bio'] ?? '').toString();
+    final avatar = (p?['avatar_url'] ?? '').toString();
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('الملف الشخصي'),
+        title: Text('@$username', style: const TextStyle(fontWeight: FontWeight.w800)),
+        leading: IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())), icon: const Icon(Icons.menu)),
         actions: [
-          IconButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
-            icon: const Icon(Icons.settings_outlined),
-          ),
+          IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage())), icon: const Icon(Icons.search)),
+          IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())), icon: const Icon(Icons.more_horiz)),
         ],
       ),
-      body: Center(
-        child: Column(
-          children: [
-            const SizedBox(height: 25),
-            CircleAvatar(
-              radius: 48,
-              backgroundImage: (p?['avatar_url'] ?? '').toString().isNotEmpty ? NetworkImage(p!['avatar_url']) : null,
-              child: (p?['avatar_url'] ?? '').toString().isEmpty ? const Icon(Icons.person, size: 50) : null,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '@${p?['username'] ?? ''}',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              p?['bio'] ?? '',
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => _editProfile(context),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('تعديل الملف الشخصي'),
-            ),
-            const SizedBox(height: 20),
-            Align(alignment: Alignment.centerRight, child: Padding(padding: const EdgeInsets.symmetric(horizontal:16), child: Text('منشوراتي (${myPosts.length})', style: const TextStyle(fontSize:20,fontWeight:FontWeight.bold)))),
-            const SizedBox(height: 10),
-            Expanded(child: GridView.builder(padding: const EdgeInsets.symmetric(horizontal:8), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4), itemCount:myPosts.length, itemBuilder:(_,i)=>FutureBuilder<String?>(
-      future: _signedPostUrl(myPosts[i]['media_url'].toString()),
-      builder: (_, snap) => snap.hasData ? Image.network(snap.data!, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Icon(Icons.broken_image)) : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-    ))),
-          ],
-        ),
+      body: RefreshIndicator(
+        onRefresh: load,
+        child: ListView(children: [
+          const SizedBox(height: 12),
+          Center(child: CircleAvatar(radius: 47, backgroundColor: const Color(0xFF17323A), backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null, child: avatar.isEmpty ? const Icon(Icons.person, size: 52, color: Colors.white70) : null)),
+          const SizedBox(height: 10),
+          Center(child: Text('@$username', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+          if (bio.isNotEmpty) ...[const SizedBox(height: 5), Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 30), child: Text(bio, textAlign: TextAlign.center)))],
+          const SizedBox(height: 14),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _stat('المتابَعون', _countFollowing()),
+            _stat('المتابِعون', _countFollowers()),
+            _stat('الإعجابات', _countLikes()),
+          ]),
+          const SizedBox(height: 14),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 28), child: Row(children: [
+            Expanded(child: OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('تعديل الملف'))),
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.share_outlined, size: 18), label: const Text('مشاركة'))),
+          ])),
+          const SizedBox(height: 18),
+          SizedBox(height: 48, child: Row(children: [
+            _profileTab(0, Icons.grid_view_rounded, 'منشوراتي'),
+            _profileTab(1, Icons.lock_outline, 'خاص'),
+            _profileTab(2, Icons.favorite_border, 'الإعجابات'),
+          ])),
+          const Divider(height: 1),
+          if (tab == 0) _postGrid(myPosts) else const SizedBox(height: 260, child: Center(child: Text('لا يوجد محتوى في هذا القسم'))),
+          const SizedBox(height: 100),
+        ]),
       ),
     );
   }
+
+  String _countFollowers() => (p?['followers_count'] ?? 0).toString();
+  String _countFollowing() => (p?['following_count'] ?? 0).toString();
+  String _countLikes() => (p?['likes_count'] ?? 0).toString();
+
+  Widget _stat(String label, String value) => Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [Text(value, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11))]));
+  Widget _profileTab(int i, IconData icon, String label) => Expanded(child: InkWell(onTap: () => setState(() => tab = i), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, size: 21, color: tab == i ? Colors.white : Colors.white54), const SizedBox(height: 3), Text(label, style: TextStyle(fontSize: 10, color: tab == i ? Colors.white : Colors.white54))])));
+  Widget _postGrid(List<Map<String, dynamic>> posts) => posts.isEmpty ? const SizedBox(height: 260, child: Center(child: Text('لا توجد فيديوهات بعد'))) : GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.all(2), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2, childAspectRatio: .66), itemCount: posts.length, itemBuilder: (_, i) => FutureBuilder<String?>(future: _signedPostUrl((posts[i]['media_url'] ?? '').toString()), builder: (_, snap) => snap.hasData ? Stack(fit: StackFit.expand, children: [Image.network(snap.data!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)), const Positioned(bottom: 4, right: 4, child: Row(children: [Icon(Icons.play_arrow, size: 14), SizedBox(width: 2), Text('N', style: TextStyle(fontSize: 9))]))]) : const ColoredBox(color: Color(0xFF16181F))));
 }
 
+class _ProfileCountFuture {
+  const _ProfileCountFuture();
+}
 
-class SettingsPage extends StatefulWidget {
+class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
-  @override State<SettingsPage> createState() => _SettingsPageState();
-}
-class _SettingsPageState extends State<SettingsPage> {
-  bool private = false, notifications = true, loading = true;
 
-  @override void initState() { super.initState(); _loadSettings(); }
-
-  Future<void> _loadSettings() async {
-    final user = sb.auth.currentUser; if (user == null) return;
-    try {
-      final row = await sb.from('profiles').select('is_private,notifications_enabled').eq('id', user.id).maybeSingle();
-      if (mounted) setState(() { private = row?['is_private'] == true; notifications = row?['notifications_enabled'] != false; loading = false; });
-    } catch (_) { if (mounted) setState(() => loading = false); }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('الإعدادات والخصوصية'), leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back))),
+      body: ListView(padding: const EdgeInsets.only(bottom: 30), children: [
+        _section('الحساب'),
+        _item(context, Icons.person_outline, 'الحساب', 'إدارة معلومات حساب N', () {}),
+        _item(context, Icons.security_outlined, 'الأمان', 'كلمة المرور وأمان الحساب', () {}),
+        _item(context, Icons.qr_code_2, 'رمز QR الخاص بي', 'شارك ملفك بسرعة', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const QrPage()))),
+        _section('المحتوى والنشاط'),
+        _item(context, Icons.history, 'مركز النشاط', 'سجل تفاعلاتك ونشاطك', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActivityPage()))),
+        _item(context, Icons.visibility_outlined, 'زيارات الملف الشخصي', 'من شاهد ملفك', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VisitorsPage()))),
+        _item(context, Icons.block_outlined, 'الحسابات المحظورة', 'إدارة الحسابات المحظورة', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BlockedPage()))),
+        _section('الأدوات'),
+        _item(context, Icons.download_outlined, 'فيديوهات بدون اتصال', 'مشاهدة المحتوى المحفوظ محليًا', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflinePage()))),
+        _item(context, Icons.auto_awesome, 'N Studio', 'أدوات إنشاء وإدارة المحتوى', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudioPage()))),
+        _item(context, Icons.account_balance_wallet_outlined, 'الرصيد والهدايا', 'إدارة العملات والهدايا', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletPage()))),
+        _item(context, Icons.notifications_none, 'الإشعارات', 'إعدادات التنبيهات', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()))),
+        _section('الخصوصية'),
+        _item(context, Icons.lock_outline, 'الخصوصية', 'الحساب الخاص والتحكم بالمحتوى', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPage()))),
+        _section('N'),
+        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.0.0', () {}),
+        ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)), onTap: () async { await sb.auth.signOut(); if (context.mounted) Navigator.popUntil(context, (r) => r.isFirst); }),
+      ]),
+    );
   }
 
-  Future<void> _setSetting(String field, bool value) async {
-    final user = sb.auth.currentUser; if (user == null) return;
-    final oldPrivate=private, oldNotifications=notifications;
-    setState(() { if(field=='is_private') private=value; if(field=='notifications_enabled') notifications=value; });
-    try { await sb.from('profiles').update({field:value}).eq('id', user.id); }
-    catch(e) { if(!mounted)return; setState(() { private=oldPrivate; notifications=oldNotifications; }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر حفظ الإعداد: $e'))); }
-  }
-
-  @override Widget build(BuildContext context) => Scaffold(appBar:AppBar(title:const Text('الإعدادات والخصوصية')),body: loading ? const Center(child:CircularProgressIndicator()) : ListView(children:[
-    SwitchListTile(value:private,onChanged:(v)=>_setSetting('is_private',v),title:const Text('حساب خاص'),subtitle:const Text('التحكم في ظهور محتواك للآخرين'),secondary:const Icon(Icons.lock_outline)),
-    SwitchListTile(value:notifications,onChanged:(v)=>_setSetting('notifications_enabled',v),title:const Text('الإشعارات'),secondary:const Icon(Icons.notifications_none)),
-    ListTile(leading:const Icon(Icons.security_outlined),title:const Text('الأمان والحساب'),onTap:()=>showDialog(context:context,builder:(_)=>AlertDialog(title:const Text('الأمان والحساب'),content:const Text('يمكنك استخدام استعادة كلمة المرور من شاشة الدخول.'),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('إغلاق'))]))),
-    ListTile(leading:const Icon(Icons.language),title:const Text('اللغة'),subtitle:const Text('العربية')), const Divider(),
-    ListTile(leading:const Icon(Icons.logout),title:const Text('تسجيل الخروج'),onTap:() async { await sb.auth.signOut(); if(context.mounted) Navigator.pop(context); }),
-  ]));
+  Widget _section(String title) => Padding(padding: const EdgeInsets.fromLTRB(18, 20, 18, 7), child: Text(title, style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w800)));
+  Widget _item(BuildContext context, IconData icon, String title, String sub, VoidCallback tap) => ListTile(onTap: tap, leading: Icon(icon, size: 23), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(sub, style: const TextStyle(fontSize: 11, color: Colors.white54)), trailing: const Icon(Icons.chevron_left, color: Colors.white38));
 }
+
+class SimpleNPage extends StatelessWidget {
+  final String title; final IconData icon; final String message;
+  const SimpleNPage({super.key, required this.title, required this.icon, required this.message});
+  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(title)), body: Center(child: Padding(padding: const EdgeInsets.all(30), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 60, color: cyan), const SizedBox(height: 18), Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: Colors.white70))])));
+}
+class QrPage extends StatelessWidget { const QrPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'رمز QR',icon:Icons.qr_code_2,message:'رمز N الخاص بك جاهز للمشاركة.'); }
+class ActivityPage extends StatelessWidget { const ActivityPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'مركز النشاط',icon:Icons.history,message:'هنا يظهر سجل نشاطك وتفاعلاتك في N.'); }
+class VisitorsPage extends StatelessWidget { const VisitorsPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'زيارات الملف الشخصي',icon:Icons.visibility_outlined,message:'ستظهر هنا الحسابات التي زارت ملفك عند تفعيل الميزة.'); }
+class BlockedPage extends StatelessWidget { const BlockedPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الحسابات المحظورة',icon:Icons.block_outlined,message:'لا توجد حسابات محظورة حاليًا.'); }
+class OfflinePage extends StatelessWidget { const OfflinePage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'فيديوهات بدون اتصال',icon:Icons.download_outlined,message:'الفيديوهات المحفوظة للمشاهدة دون اتصال ستظهر هنا.'); }
+class StudioPage extends StatelessWidget { const StudioPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'N Studio',icon:Icons.auto_awesome,message:'أدوات N لإنشاء الفيديوهات وإدارة المحتوى.'); }
+class WalletPage extends StatelessWidget { const WalletPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الرصيد والهدايا',icon:Icons.account_balance_wallet_outlined,message:'الرصيد والهدايا والمعاملات تظهر هنا عند ربط بوابة الدفع.'); }
+class NotificationsPage extends StatelessWidget { const NotificationsPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الإشعارات',icon:Icons.notifications_none,message:'ستظهر هنا المتابعات والإعجابات والتعليقات والرسائل.'); }
+class PrivacyPage extends StatefulWidget { const PrivacyPage({super.key}); @override State<PrivacyPage> createState()=>_PrivacyPageState(); }
+class _PrivacyPageState extends State<PrivacyPage> { bool private=false, notifications=true; @override void initState(){super.initState();_load();} Future<void> _load() async { final u=sb.auth.currentUser; if(u==null)return; try { final r=await sb.from('profiles').select('is_private,notifications_enabled').eq('id',u.id).maybeSingle(); if(mounted)setState((){private=r?['is_private']==true;notifications=r?['notifications_enabled']!=false;}); } catch(_){}} Future<void> _set(String f,bool v) async { setState((){if(f=='is_private')private=v;else notifications=v;}); try{await sb.from('profiles').update({f:v}).eq('id',sb.auth.currentUser!.id);}catch(_){if(mounted)setState((){if(f=='is_private')private=!v;else notifications=!v;});}} @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('الخصوصية')),body:ListView(children:[SwitchListTile(value:private,onChanged:(v)=>_set('is_private',v),title:const Text('حساب خاص'),subtitle:const Text('تحكم بمن يمكنه مشاهدة محتواك'),secondary:const Icon(Icons.lock_outline)),SwitchListTile(value:notifications,onChanged:(v)=>_set('notifications_enabled',v),title:const Text('الإشعارات'),secondary:const Icon(Icons.notifications_none))])); }
 
 class AiPage extends StatefulWidget {
   const AiPage({super.key});
