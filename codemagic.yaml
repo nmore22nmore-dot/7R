@@ -49,7 +49,7 @@ workflows:
         script: flutter pub get
 
       - name: Analyze
-        script: flutter analyze || true
+        script: flutter analyze
 
       - name: Test
         script: flutter test

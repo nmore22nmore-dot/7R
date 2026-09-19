@@ -7,8 +7,12 @@ create table if not exists public.profiles (
   bio text default '',
   is_verified boolean default false,
   is_admin boolean default false,
+  is_private boolean not null default false,
+  notifications_enabled boolean not null default true,
   created_at timestamptz default now()
 );
+alter table public.profiles add column if not exists is_private boolean not null default false;
+alter table public.profiles add column if not exists notifications_enabled boolean not null default true;
 
 create table if not exists public.premium_usernames (
   username text primary key,
@@ -30,6 +34,14 @@ create table if not exists public.posts (
   created_at timestamptz default now()
 );
 
+-- Normalize legacy public Storage URLs so the private-bucket policies can still resolve old content.
+update public.posts
+set media_url = regexp_replace(media_url, '^.*/storage/v1/object/public/post-media/', '')
+where media_url like '%/storage/v1/object/public/post-media/%';
+update public.messages
+set media_url = regexp_replace(media_url, '^.*/storage/v1/object/public/message-media/', '')
+where media_url like '%/storage/v1/object/public/message-media/%';
+
 create table if not exists public.post_likes (
   post_id uuid references public.posts(id) on delete cascade,
   user_id uuid references auth.users(id) on delete cascade,
@@ -43,6 +55,22 @@ create table if not exists public.saved_posts (
   created_at timestamptz default now(),
   primary key(post_id,user_id)
 );
+
+create or replace function public.sync_post_like_count()
+returns trigger language plpgsql security definer set search_path=public as $$
+begin
+  if tg_op='INSERT' then
+    update public.posts set likes_count=likes_count+1 where id=new.post_id;
+    return new;
+  elsif tg_op='DELETE' then
+    update public.posts set likes_count=greatest(likes_count-1,0) where id=old.post_id;
+    return old;
+  end if;
+  return null;
+end $$;
+drop trigger if exists post_like_count_sync on public.post_likes;
+create trigger post_like_count_sync after insert or delete on public.post_likes
+for each row execute function public.sync_post_like_count();
 
 create table if not exists public.follows (
   follower_id uuid references auth.users(id) on delete cascade,
@@ -153,10 +181,18 @@ alter table public.user_coins enable row level security;
 alter table public.premium_usernames enable row level security;
 
 create policy "profiles read" on profiles for select using(true);
-create policy "profiles own update" on profiles for update using(auth.uid()=id);
-create policy "profiles own insert" on profiles for insert with check(auth.uid()=id);
+drop policy if exists "profiles own update" on profiles;
+create policy "profiles own update" on profiles for update to authenticated
+using (auth.uid() = id)
+with check (auth.uid() = id and is_admin = (select p.is_admin from public.profiles p where p.id=auth.uid()) and is_verified = (select p.is_verified from public.profiles p where p.id=auth.uid()));
+drop policy if exists "profiles own insert" on profiles;
+create policy "profiles own insert" on profiles for insert to authenticated
+with check (auth.uid()=id and is_admin=false and is_verified=false);
 
-create policy "posts public read" on posts for select using(visibility='public' or auth.uid()=user_id);
+drop policy if exists "posts public read" on posts;
+create policy "posts visible read" on posts for select to authenticated using (
+ auth.uid()=user_id or visibility='public' or (visibility='followers' and exists(select 1 from public.follows f where f.follower_id=auth.uid() and f.following_id=posts.user_id))
+);
 create policy "posts own insert" on posts for insert with check(auth.uid()=user_id);
 create policy "posts own update" on posts for update using(auth.uid()=user_id);
 create policy "posts own delete" on posts for delete using(auth.uid()=user_id);
@@ -172,7 +208,34 @@ create policy "comments read" on comments for select using(true);
 create policy "comments own" on comments for insert with check(auth.uid()=user_id);
 create policy "comments delete" on comments for delete using(auth.uid()=user_id);
 
-create policy "conversations member" on conversations for all using(auth.uid()=user_a or auth.uid()=user_b) with check(auth.uid()=user_a or auth.uid()=user_b);
+drop policy if exists "conversations member" on conversations;
+create policy "conversations member read" on conversations for select to authenticated using(auth.uid()=user_a or auth.uid()=user_b);
+create or replace function public.create_conversation(p_other_user uuid) returns uuid language plpgsql security definer set search_path=public as $$
+declare me uuid:=auth.uid(); a uuid; b uuid; cid uuid;
+begin
+ if me is null then raise exception 'NOT_AUTHENTICATED'; end if;
+ if p_other_user is null or p_other_user=me then raise exception 'INVALID_PARTICIPANT'; end if;
+ if not exists(select 1 from auth.users where id=p_other_user) then raise exception 'USER_NOT_FOUND'; end if;
+ a:=least(me,p_other_user); b:=greatest(me,p_other_user);
+ insert into public.conversations(user_a,user_b) values(a,b) on conflict(user_a,user_b) do update set updated_at=public.conversations.updated_at returning id into cid;
+ return cid;
+end $$;
+revoke all on function public.create_conversation(uuid) from public;
+grant execute on function public.create_conversation(uuid) to authenticated;
+
+create or replace function public.touch_conversation_from_message()
+returns trigger language plpgsql security definer set search_path=public as $$
+begin
+  update public.conversations
+  set last_message = case when coalesce(new.body,'')='' then '📎 ملف مرفق' else new.body end,
+      updated_at = coalesce(new.created_at, now())
+  where id = new.conversation_id;
+  return new;
+end $$;
+drop trigger if exists message_conversation_touch on public.messages;
+create trigger message_conversation_touch after insert on public.messages
+for each row execute function public.touch_conversation_from_message();
+
 create policy "messages member" on messages for select using(exists(select 1 from conversations c where c.id=conversation_id and (c.user_a=auth.uid() or c.user_b=auth.uid())));
 create policy "messages sender" on messages for insert with check(auth.uid()=sender_id and exists(select 1 from conversations c where c.id=conversation_id and (c.user_a=auth.uid() or c.user_b=auth.uid())));
 create policy "notifications own" on notifications for select using(auth.uid()=user_id);
@@ -184,8 +247,8 @@ create policy "premium read" on premium_usernames for select using(status='avail
 
 -- N Storage: bucket + policies required for video/image publishing.
 insert into storage.buckets (id, name, public)
-values ('post-media', 'post-media', true)
-on conflict (id) do update set public = true;
+values ('post-media', 'post-media', false)
+on conflict (id) do update set public = false;
 
 drop policy if exists "N post media upload" on storage.objects;
 create policy "N post media upload"
@@ -218,19 +281,21 @@ using (
   and owner_id = auth.uid()
 );
 
+create or replace function public.can_read_post_media(object_name text) returns boolean language sql stable security definer set search_path=public as $$
+select exists(select 1 from public.posts p where p.media_url=object_name and (p.user_id=auth.uid() or p.visibility='public' or (p.visibility='followers' and exists(select 1 from public.follows f where f.follower_id=auth.uid() and f.following_id=p.user_id))));
+$$;
+revoke all on function public.can_read_post_media(text) from public;
+grant execute on function public.can_read_post_media(text) to authenticated;
 drop policy if exists "N post media public read" on storage.objects;
-create policy "N post media public read"
-on storage.objects for select
-to public
-using (bucket_id = 'post-media');
+create policy "N post media access" on storage.objects for select to authenticated using(bucket_id='post-media' and public.can_read_post_media(name));
 
 
 -- N message media: attachments sent inside conversations.
 alter table public.messages add column if not exists media_type text;
 
 insert into storage.buckets (id, name, public)
-values ('message-media', 'message-media', true)
-on conflict (id) do update set public = true;
+values ('message-media', 'message-media', false)
+on conflict (id) do update set public = false;
 
 drop policy if exists "N message media upload" on storage.objects;
 create policy "N message media upload"

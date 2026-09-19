@@ -16,6 +16,56 @@ const cyan = Color(0xFF00C8FF);
 const pink = Color(0xFFFF287A);
 const authRedirectUrl = 'n://auth-callback';
 
+
+String _storagePath(String value, String bucket) {
+  if (value.startsWith('http')) {
+    final marker = '/storage/v1/object/public/$bucket/';
+    final i = value.indexOf(marker);
+    if (i >= 0) return Uri.decodeComponent(value.substring(i + marker.length));
+    final signedMarker = '/storage/v1/object/sign/$bucket/';
+    final j = value.indexOf(signedMarker);
+    if (j >= 0) return Uri.decodeComponent(value.substring(j + signedMarker.length).split('?').first);
+  }
+  return value;
+}
+
+Future<String?> _signedPostUrl(String value) async {
+  if (value.isEmpty) return null;
+  try {
+    return await sb.storage.from('post-media').createSignedUrl(_storagePath(value, 'post-media'), 3600);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<List<Map<String, dynamic>>> loadPostsWithProfiles({required bool following}) async {
+  final user = sb.auth.currentUser;
+  var query = sb.from('posts').select('*').eq('visibility', 'public');
+  if (following) {
+    if (user == null) return [];
+    final follows = await sb.from('follows').select('following_id').eq('follower_id', user.id);
+    final ids = List<Map<String, dynamic>>.from(follows).map((r) => r['following_id'].toString()).toList();
+    if (ids.isEmpty) return [];
+    query = query.inFilter('user_id', ids);
+  }
+  final raw = await query.order('created_at', ascending: false).limit(50);
+  final rows = List<Map<String, dynamic>>.from(raw);
+  if (rows.isEmpty) return rows;
+  final ids = rows.map((r) => r['user_id'].toString()).toSet().toList();
+  final profiles = await sb.from('profiles').select('id,username,avatar_url,bio,is_verified').inFilter('id', ids);
+  final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
+  return Future.wait(rows.map((row) async {
+    final copy = Map<String, dynamic>.from(row);
+    copy['profile'] = byId[row['user_id'].toString()];
+    final rawUrl = (copy['media_url'] ?? '').toString();
+    final path = _storagePath(rawUrl, 'post-media');
+    if (path.isNotEmpty) {
+      try { copy['media_url'] = await sb.storage.from('post-media').createSignedUrl(path, 3600); } catch (_) { copy['media_url'] = rawUrl; }
+    }
+    return copy;
+  }));
+}
+
 class NApp extends StatelessWidget {
   final bool configError;
 
@@ -847,7 +897,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('@${widget.username}')),body:Column(children:[
     const SizedBox(height:18), CircleAvatar(radius:44,child:Text(widget.username.isEmpty?'N':widget.username[0].toUpperCase(),style:const TextStyle(fontSize:28,fontWeight:FontWeight.bold))), const SizedBox(height:10),
     FilledButton(onPressed:busy?null:toggleFollow,child:Text(following?'إلغاء المتابعة':'متابعة')), const SizedBox(height:12),
-    Expanded(child:GridView.builder(padding:const EdgeInsets.all(8),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4),itemCount:posts.length,itemBuilder:(_,i)=>Image.network(posts[i]['media_url'],fit:BoxFit.cover,errorBuilder:(_,__,___)=>const Icon(Icons.broken_image))))
+    Expanded(child:GridView.builder(padding:const EdgeInsets.all(8),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4),itemCount:posts.length,itemBuilder:(_,i)=>FutureBuilder<String?>(
+      future: _signedPostUrl(posts[i]['media_url'].toString()),
+      builder: (_, snap) => snap.hasData ? Image.network(snap.data!, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Icon(Icons.broken_image)) : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    )))
   ]));
 }
 
@@ -888,6 +941,7 @@ class FeedPage extends StatefulWidget {
 class _FeedPageState extends State<FeedPage> {
   List<Map<String, dynamic>> posts = [];
   bool loading = true;
+  int activeIndex = 0;
 
   @override
   void initState() {
@@ -898,40 +952,10 @@ class _FeedPageState extends State<FeedPage> {
   Future<void> load() async {
     if (mounted) setState(() => loading = true);
     try {
-      final user = sb.auth.currentUser;
-      dynamic query = sb
-          .from('posts')
-          .select('*, profiles(username,avatar_url)')
-          .eq('visibility', 'public');
-
-      if (widget.following && user != null) {
-        final follows = await sb
-            .from('follows')
-            .select('following_id')
-            .eq('follower_id', user.id);
-        final ids = List<Map<String, dynamic>>.from(follows)
-            .map((row) => row['following_id'].toString())
-            .toList();
-        if (ids.isEmpty) {
-          if (mounted) setState(() => posts = []);
-          return;
-        }
-        query = query.inFilter('user_id', ids);
-      }
-
-      final data = await query
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      if (mounted) {
-        setState(() => posts = List<Map<String, dynamic>>.from(data));
-      }
+      final data = await loadPostsWithProfiles(following: widget.following);
+      if (mounted) setState(() => posts = data);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذر تحميل المحتوى: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحميل المحتوى: $e')));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -966,7 +990,8 @@ class _FeedPageState extends State<FeedPage> {
                       child: PageView.builder(
                         scrollDirection: Axis.vertical,
                         itemCount: posts.length,
-                        itemBuilder: (_, i) => VideoCard(post: posts[i]),
+                        onPageChanged: (i) => setState(() => activeIndex = i),
+                        itemBuilder: (_, i) => VideoCard(post: posts[i], active: i == activeIndex),
                       ),
                     ),
           SafeArea(
@@ -1050,10 +1075,12 @@ class _FeedTab extends StatelessWidget {
 
 class VideoCard extends StatefulWidget {
   final Map<String, dynamic> post;
+  final bool active;
 
   const VideoCard({
     super.key,
     required this.post,
+    this.active = true,
   });
 
   @override
@@ -1082,7 +1109,7 @@ class _VideoCardState extends State<VideoCard> {
         if (mounted) {
           setState(() {});
           c!.setLooping(true);
-          c!.play();
+          if (widget.active) c!.play();
         }
       });
     }
@@ -1102,6 +1129,14 @@ class _VideoCardState extends State<VideoCard> {
         saved = results[1] != null;
       });
     } catch (_) {}
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (c?.value.isInitialized != true) return;
+    if (widget.active && !oldWidget.active) c!.play();
+    if (!widget.active && oldWidget.active) c!.pause();
   }
 
   @override
@@ -1178,8 +1213,10 @@ class _VideoCardState extends State<VideoCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
+    return GestureDetector(
+      onDoubleTap: like,
+      child: Stack(
+        fit: StackFit.expand,
       children: [
         if ((widget.post['media_type'] ?? 'video') == 'image' && url.isNotEmpty)
           Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 60)))
@@ -1249,7 +1286,7 @@ class _VideoCardState extends State<VideoCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '@${widget.post['profiles']?['username'] ?? 'N'}',
+                '@${widget.post['profile']?['username'] ?? 'N'}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
@@ -1267,6 +1304,7 @@ class _VideoCardState extends State<VideoCard> {
           ),
         ),
       ],
+      ),
     );
   }
 }
@@ -1285,6 +1323,16 @@ void showShare(BuildContext context) {
       );
     },
   );
+}
+
+Future<List<Map<String, dynamic>>> _loadComments(dynamic postId) async {
+  final raw = await sb.from('comments').select('id,post_id,user_id,body,created_at').eq('post_id', postId).order('created_at', ascending: false);
+  final rows = List<Map<String, dynamic>>.from(raw);
+  final ids = rows.map((r) => r['user_id'].toString()).toSet().toList();
+  if (ids.isEmpty) return rows;
+  final profiles = await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
+  final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
+  return rows.map((r) { final x=Map<String,dynamic>.from(r); x['profile']=byId[r['user_id'].toString()]; return x; }).toList();
 }
 
 Future<void> showComments(
@@ -1319,24 +1367,14 @@ Future<void> showComments(
                 SizedBox(
                   height: 280,
                   child: FutureBuilder<List<Map<String, dynamic>>>(
-                    future: sb
-                        .from('comments')
-                        .select('*, profiles(username)')
-                        .eq('post_id', postId)
-                        .order(
-                          'created_at',
-                          ascending: false,
-                        )
-                        .then(
-                          (x) => List<Map<String, dynamic>>.from(x),
-                        ),
+                    future: _loadComments(postId),
                     builder: (_, s) {
                       if (s.hasData) {
                         return ListView(
                           children: s.data!.map((e) {
                             return ListTile(
                               title: Text(
-                                '@${e['profiles']?['username'] ?? ''}',
+                                '@${e['profile']?['username'] ?? ''}',
                               ),
                               subtitle: Text(
                                 e['body'] ?? '',
@@ -1557,6 +1595,7 @@ class _PublishPageState extends State<PublishPage> {
   XFile? file;
   bool imageMode = false;
   bool busy = false;
+  String visibility = 'public';
 
   Future<void> pick(ImageSource src) async {
     final x = imageMode ? await ImagePicker().pickImage(source: src, imageQuality: 90) : await ImagePicker().pickVideo(source: src);
@@ -1595,16 +1634,14 @@ class _PublishPageState extends State<PublishPage> {
             File(file!.path),
           );
 
-      final url = sb.storage
-          .from('post-media')
-          .getPublicUrl(path);
+      final mediaPath = path;
 
       await sb.from('posts').insert({
         'user_id': uid,
-        'media_url': url,
+        'media_url': mediaPath,
         'media_type': imageMode ? 'image' : 'video',
         'caption': caption.text.trim(),
-        'visibility': 'public',
+        'visibility': visibility,
       });
 
       if (mounted) {
@@ -1680,9 +1717,19 @@ class _PublishPageState extends State<PublishPage> {
             TextField(
               controller: caption,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'الوصف',
-              ),
+              decoration: const InputDecoration(labelText: 'الوصف'),
+            ),
+            const SizedBox(height: 12),
+            Align(alignment: Alignment.centerRight, child: Text('من يمكنه مشاهدة المنشور؟', style: Theme.of(context).textTheme.titleSmall)),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'public', label: Text('الجميع'), icon: Icon(Icons.public, size: 18)),
+                ButtonSegment(value: 'followers', label: Text('المتابعون'), icon: Icon(Icons.people_outline, size: 18)),
+                ButtonSegment(value: 'private', label: Text('أنا فقط'), icon: Icon(Icons.lock_outline, size: 18)),
+              ],
+              selected: {visibility},
+              onSelectionChanged: (v) => setState(() => visibility = v.first),
             ),
             const Spacer(),
             SizedBox(
@@ -1867,7 +1914,7 @@ class _ChatPageState extends State<ChatPage> {
         final safeExt = ext.isEmpty ? (isVideo ? 'mp4' : 'jpg') : ext;
         final path = '${user.id}/${widget.id}/${DateTime.now().millisecondsSinceEpoch}.$safeExt';
         await sb.storage.from('message-media').upload(path, File(attachment!.path));
-        mediaUrl = sb.storage.from('message-media').getPublicUrl(path);
+        mediaUrl = path;
       }
 
       await sb.from('messages').insert({
@@ -1877,11 +1924,6 @@ class _ChatPageState extends State<ChatPage> {
         'media_url': mediaUrl,
         'media_type': mediaType,
       });
-      await sb.from('conversations').update({
-        'last_message': mediaUrl == null ? body : (body.isEmpty ? '📎 ملف مرفق' : '📎 $body'),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', widget.id);
-
       ctrl.clear();
       if (mounted) setState(() => attachment = null);
       await load();
@@ -1904,6 +1946,10 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
+  Future<String?> _signedMessageUrl(String value) async {
+    try { return await sb.storage.from('message-media').createSignedUrl(_storagePath(value, 'message-media'), 3600); } catch (_) { return null; }
+  }
+
   Widget _messageMedia(Map<String, dynamic> m) {
     final url = (m['media_url'] ?? '').toString();
     if (url.isEmpty) return const SizedBox.shrink();
@@ -1911,9 +1957,11 @@ class _ChatPageState extends State<ChatPage> {
     if (type == 'image') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 7),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.network(url, width: 220, height: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Text('تعذر عرض الصورة')),
+        child: FutureBuilder<String?>(
+          future: _signedMessageUrl(url),
+          builder: (_, snap) => snap.hasData
+              ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(snap.data!, width: 220, height: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Text('تعذر عرض الصورة')))
+              : const SizedBox(width: 220, height: 80, child: Center(child: CircularProgressIndicator())),
         ),
       );
     }
@@ -2089,7 +2137,10 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 20),
             Align(alignment: Alignment.centerRight, child: Padding(padding: const EdgeInsets.symmetric(horizontal:16), child: Text('منشوراتي (${myPosts.length})', style: const TextStyle(fontSize:20,fontWeight:FontWeight.bold)))),
             const SizedBox(height: 10),
-            Expanded(child: GridView.builder(padding: const EdgeInsets.symmetric(horizontal:8), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4), itemCount:myPosts.length, itemBuilder:(_,i)=>Image.network(myPosts[i]['media_url'],fit:BoxFit.cover,errorBuilder:(_,__,___)=>const Icon(Icons.broken_image)))),
+            Expanded(child: GridView.builder(padding: const EdgeInsets.symmetric(horizontal:8), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4), itemCount:myPosts.length, itemBuilder:(_,i)=>FutureBuilder<String?>(
+      future: _signedPostUrl(myPosts[i]['media_url'].toString()),
+      builder: (_, snap) => snap.hasData ? Image.network(snap.data!, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Icon(Icons.broken_image)) : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    ))),
           ],
         ),
       ),
@@ -2103,10 +2154,29 @@ class SettingsPage extends StatefulWidget {
   @override State<SettingsPage> createState() => _SettingsPageState();
 }
 class _SettingsPageState extends State<SettingsPage> {
-  bool private = false, notifications = true;
-  @override Widget build(BuildContext context) => Scaffold(appBar:AppBar(title:const Text('الإعدادات والخصوصية')),body:ListView(children:[
-    SwitchListTile(value:private,onChanged:(v)=>setState(()=>private=v),title:const Text('حساب خاص'),subtitle:const Text('التحكم في ظهور محتواك للآخرين'),secondary:const Icon(Icons.lock_outline)),
-    SwitchListTile(value:notifications,onChanged:(v)=>setState(()=>notifications=v),title:const Text('الإشعارات'),secondary:const Icon(Icons.notifications_none)),
+  bool private = false, notifications = true, loading = true;
+
+  @override void initState() { super.initState(); _loadSettings(); }
+
+  Future<void> _loadSettings() async {
+    final user = sb.auth.currentUser; if (user == null) return;
+    try {
+      final row = await sb.from('profiles').select('is_private,notifications_enabled').eq('id', user.id).maybeSingle();
+      if (mounted) setState(() { private = row?['is_private'] == true; notifications = row?['notifications_enabled'] != false; loading = false; });
+    } catch (_) { if (mounted) setState(() => loading = false); }
+  }
+
+  Future<void> _setSetting(String field, bool value) async {
+    final user = sb.auth.currentUser; if (user == null) return;
+    final oldPrivate=private, oldNotifications=notifications;
+    setState(() { if(field=='is_private') private=value; if(field=='notifications_enabled') notifications=value; });
+    try { await sb.from('profiles').update({field:value}).eq('id', user.id); }
+    catch(e) { if(!mounted)return; setState(() { private=oldPrivate; notifications=oldNotifications; }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر حفظ الإعداد: $e'))); }
+  }
+
+  @override Widget build(BuildContext context) => Scaffold(appBar:AppBar(title:const Text('الإعدادات والخصوصية')),body: loading ? const Center(child:CircularProgressIndicator()) : ListView(children:[
+    SwitchListTile(value:private,onChanged:(v)=>_setSetting('is_private',v),title:const Text('حساب خاص'),subtitle:const Text('التحكم في ظهور محتواك للآخرين'),secondary:const Icon(Icons.lock_outline)),
+    SwitchListTile(value:notifications,onChanged:(v)=>_setSetting('notifications_enabled',v),title:const Text('الإشعارات'),secondary:const Icon(Icons.notifications_none)),
     ListTile(leading:const Icon(Icons.security_outlined),title:const Text('الأمان والحساب'),onTap:()=>showDialog(context:context,builder:(_)=>AlertDialog(title:const Text('الأمان والحساب'),content:const Text('يمكنك استخدام استعادة كلمة المرور من شاشة الدخول.'),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('إغلاق'))]))),
     ListTile(leading:const Icon(Icons.language),title:const Text('اللغة'),subtitle:const Text('العربية')), const Divider(),
     ListTile(leading:const Icon(Icons.logout),title:const Text('تسجيل الخروج'),onTap:() async { await sb.auth.signOut(); if(context.mounted) Navigator.pop(context); }),

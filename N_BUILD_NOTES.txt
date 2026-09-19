@@ -28,3 +28,18 @@ N 4.0.2 repair notes
 Supabase Dashboard requirement:
 Authentication > URL Configuration > Redirect URLs must include:
 n://auth-callback
+
+
+N Phase 29 repair pass
+- Fixed ambiguous PostgREST profile embedding that caused the home feed error.
+- Added explicit profile resolution for feed/comments.
+- Added active-page video pause/play and double-tap like.
+- Added per-post visibility selector.
+- Persisted private-account and notification settings in profiles.
+- Added secure conversation creation RPC and removed direct conversation write policy.
+- Converted post/message media buckets to private and added signed URL access checks.
+- Codemagic analyze now fails the workflow on analyzer errors.
+- This pass does not claim real Live streaming, payments, or N AI provider integration.
+
+- Added server-side like-count synchronization trigger and message->conversation last-message trigger; Flutter no longer needs a direct conversation update.
+- Added migration of legacy public media URLs to storage paths before private Storage policies are used.
