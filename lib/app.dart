@@ -145,11 +145,11 @@ class NApp extends StatelessWidget {
           elevation: 0,
           centerTitle: true,
         ),
-        navigationBarTheme: NavigationBarThemeData(
+        navigationBarTheme: const NavigationBarThemeData(
           backgroundColor: const Color(0xFF0B0D13),
           indicatorColor: const Color(0xFF17202A),
           labelTextStyle: WidgetStatePropertyAll(
-            TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -456,7 +456,7 @@ class _AuthPageState extends State<AuthPage> {
       child: Scaffold(
         body: Stack(
           children: [
-            Positioned.fill(
+            const Positioned.fill(
               child: DecoratedBox(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -1004,8 +1004,32 @@ class _VideoCardState extends State<VideoCard> {
     else { await sb.from('post_likes').insert({'post_id': widget.post['id'], 'user_id': u.id}); likes++; }
     if (mounted) setState(() => liked = !liked);
   } catch (_) {} }
-  Future<void> save() async { final u=sb.auth.currentUser; if(u==null)return; try { if(saved) await sb.from('saved_posts').delete().eq('post_id',widget.post['id']).eq('user_id',u.id); else await sb.from('saved_posts').insert({'post_id':widget.post['id'],'user_id':u.id}); if(mounted)setState(()=>saved=!saved); } catch(_){} }
-  Future<void> toggleFollow() async { final u=sb.auth.currentUser; final target=widget.post['user_id']?.toString(); if(u==null||target==null||u.id==target)return; try { if(following) await sb.from('follows').delete().eq('follower_id',u.id).eq('following_id',target); else await sb.from('follows').insert({'follower_id':u.id,'following_id':target}); if(mounted)setState(()=>following=!following); } catch(_){} }
+  Future<void> save() async {
+    final u = sb.auth.currentUser;
+    if (u == null) return;
+    try {
+      if (saved) {
+        await sb.from('saved_posts').delete().eq('post_id', widget.post['id']).eq('user_id', u.id);
+      } else {
+        await sb.from('saved_posts').insert({'post_id': widget.post['id'], 'user_id': u.id});
+      }
+      if (mounted) setState(() => saved = !saved);
+    } catch (_) {}
+  }
+
+  Future<void> toggleFollow() async {
+    final u = sb.auth.currentUser;
+    final target = widget.post['user_id']?.toString();
+    if (u == null || target == null || u.id == target) return;
+    try {
+      if (following) {
+        await sb.from('follows').delete().eq('follower_id', u.id).eq('following_id', target);
+      } else {
+        await sb.from('follows').insert({'follower_id': u.id, 'following_id': target});
+      }
+      if (mounted) setState(() => following = !following);
+    } catch (_) {}
+  }
 
   Widget _action(IconData icon, String text, VoidCallback onTap, {bool active=false}) => Padding(padding: const EdgeInsets.only(bottom: 15), child: Column(children: [
     InkWell(onTap:onTap, child: Icon(icon, color: active ? const Color(0xFFFF2D55) : Colors.white, size: 34)),
@@ -1721,7 +1745,7 @@ class _ChatPageState extends State<ChatPage> {
     } catch (e) {
       if (uploadedPath != null) {
         try {
-          await sb.storage.from('message-media').remove([uploadedPath!]);
+          await sb.storage.from('message-media').remove([uploadedPath]);
         } catch (_) {}
       }
       if (mounted) _showError('فشل إرسال الرسالة: $e');
@@ -2052,8 +2076,86 @@ class OfflinePage extends StatelessWidget { const OfflinePage({super.key}); @ove
 class StudioPage extends StatelessWidget { const StudioPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'N Studio',icon:Icons.auto_awesome,message:'أدوات N لإنشاء الفيديوهات وإدارة المحتوى.'); }
 class WalletPage extends StatelessWidget { const WalletPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الرصيد والهدايا',icon:Icons.account_balance_wallet_outlined,message:'الرصيد والهدايا والمعاملات تظهر هنا عند ربط بوابة الدفع.'); }
 class NotificationsPage extends StatelessWidget { const NotificationsPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الإشعارات',icon:Icons.notifications_none,message:'ستظهر هنا المتابعات والإعجابات والتعليقات والرسائل.'); }
-class PrivacyPage extends StatefulWidget { const PrivacyPage({super.key}); @override State<PrivacyPage> createState()=>_PrivacyPageState(); }
-class _PrivacyPageState extends State<PrivacyPage> { bool private=false, notifications=true; @override void initState(){super.initState();_load();} Future<void> _load() async { final u=sb.auth.currentUser; if(u==null)return; try { final r=await sb.from('profiles').select('is_private,notifications_enabled').eq('id',u.id).maybeSingle(); if(mounted)setState((){private=r?['is_private']==true;notifications=r?['notifications_enabled']!=false;}); } catch(_){}} Future<void> _set(String f,bool v) async { setState((){if(f=='is_private')private=v;else notifications=v;}); try{await sb.from('profiles').update({f:v}).eq('id',sb.auth.currentUser!.id);}catch(_){if(mounted)setState((){if(f=='is_private')private=!v;else notifications=!v;});}} @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('الخصوصية')),body:ListView(children:[SwitchListTile(value:private,onChanged:(v)=>_set('is_private',v),title:const Text('حساب خاص'),subtitle:const Text('تحكم بمن يمكنه مشاهدة محتواك'),secondary:const Icon(Icons.lock_outline)),SwitchListTile(value:notifications,onChanged:(v)=>_set('notifications_enabled',v),title:const Text('الإشعارات'),secondary:const Icon(Icons.notifications_none))])); }
+class PrivacyPage extends StatefulWidget {
+  const PrivacyPage({super.key});
+
+  @override
+  State<PrivacyPage> createState() => _PrivacyPageState();
+}
+
+class _PrivacyPageState extends State<PrivacyPage> {
+  bool private = false;
+  bool notifications = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final u = sb.auth.currentUser;
+    if (u == null) return;
+    try {
+      final r = await sb
+          .from('profiles')
+          .select('is_private,notifications_enabled')
+          .eq('id', u.id)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        private = r?['is_private'] == true;
+        notifications = r?['notifications_enabled'] != false;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _set(String field, bool value) async {
+    setState(() {
+      if (field == 'is_private') {
+        private = value;
+      } else {
+        notifications = value;
+      }
+    });
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      await sb.from('profiles').update({field: value}).eq('id', u.id);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (field == 'is_private') {
+          private = !value;
+        } else {
+          notifications = !value;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) => Scaffold(
+        appBar: AppBar(title: const Text('الخصوصية')),
+        body: ListView(
+          children: [
+            SwitchListTile(
+              value: private,
+              onChanged: (v) => _set('is_private', v),
+              title: const Text('حساب خاص'),
+              subtitle: const Text('تحكم بمن يمكنه مشاهدة محتواك'),
+              secondary: const Icon(Icons.lock_outline),
+            ),
+            SwitchListTile(
+              value: notifications,
+              onChanged: (v) => _set('notifications_enabled', v),
+              title: const Text('الإشعارات'),
+              secondary: const Icon(Icons.notifications_none),
+            ),
+          ],
+        ),
+      );
+}
 
 class AiPage extends StatefulWidget {
   const AiPage({super.key});
