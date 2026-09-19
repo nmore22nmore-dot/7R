@@ -19,6 +19,38 @@ workflows:
 
       - name: Configure Android
         script: |
+          # flutter_plugin_android_lifecycle now requires compileSdk 36+.
+          # The generated Android project may default to 34, so force compileSdk 36.
+          python3 - <<'PYCODE'
+          from pathlib import Path
+
+          candidates = [
+              Path("android/app/build.gradle"),
+              Path("android/app/build.gradle.kts"),
+              Path("android/build.gradle"),
+              Path("android/build.gradle.kts"),
+          ]
+          found = False
+          for p in candidates:
+              if not p.exists():
+                  continue
+              s = p.read_text()
+              original = s
+              # Groovy: compileSdk = flutter.compileSdkVersion / compileSdkVersion 34
+              s = s.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 36")
+              s = s.replace("compileSdk flutter.compileSdkVersion", "compileSdk 36")
+              s = s.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 36")
+              # Kotlin DSL / explicit numeric values.
+              import re
+              s = re.sub(r"compileSdk(?:Version)?\s*=\s*34", "compileSdk = 36", s)
+              s = re.sub(r"compileSdk(?:Version)?\s+34", "compileSdk 36", s)
+              if s != original:
+                  p.write_text(s)
+                  found = True
+          if not found:
+              print("compileSdk was already 36+ or was not present in generated Gradle files")
+          PYCODE
+
           mkdir -p android/app/src/main
 
           if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
