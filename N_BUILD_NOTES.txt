@@ -8,3 +8,4 @@ N 5.0.3 FINAL RELEASE
 - Storage buckets are private and use authenticated access policies.
 - Android auth callback: n://auth-callback.
 - Local Flutter SDK was not available in the packaging environment, so a local flutter analyze/build could not be executed here; Codemagic performs these gates in CI.
+- Final attachment hardening: Android file picking now requests file bytes when available and falls back to a filesystem path, allowing cloud/document-provider selections to upload correctly; message lists refresh even when message count is unchanged; failed message DB inserts clean up the uploaded Storage object.

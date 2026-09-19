@@ -1595,7 +1595,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final ctrl = TextEditingController();
   List<Map<String, dynamic>> msgs = [];
-  XFile? attachment;
+  PlatformFile? attachment;
   bool sending = false;
   Timer? _messageRefreshTimer;
   RealtimeChannel? _channel;
@@ -1620,7 +1620,7 @@ class _ChatPageState extends State<ChatPage> {
           .eq('conversation_id', widget.id)
           .order('created_at');
       final next = List<Map<String, dynamic>>.from(x);
-      if (mounted && next.length != msgs.length) {
+      if (mounted) {
         setState(() => msgs = next);
       }
     } catch (e) {
@@ -1633,21 +1633,20 @@ class _ChatPageState extends State<ChatPage> {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: false,
         type: FileType.any,
-        withData: false,
+        withData: true,
       );
       if (result == null || result.files.isEmpty) return;
       final picked = result.files.single;
-      final path = picked.path;
-      if (path == null || path.isEmpty) {
-        _showError('تعذر الوصول إلى الملف المحدد.');
-        return;
-      }
       const maxBytes = 50 * 1024 * 1024;
       if (picked.size > maxBytes) {
         _showError('حجم الملف يتجاوز الحد المسموح وهو 50 ميجابايت.');
         return;
       }
-      if (mounted) setState(() => attachment = XFile(path, name: picked.name));
+      if ((picked.path == null || picked.path!.isEmpty) && picked.bytes == null) {
+        _showError('تعذر الوصول إلى الملف المحدد. اختر الملف من مدير الملفات مرة أخرى.');
+        return;
+      }
+      if (mounted) setState(() => attachment = picked);
     } catch (e) {
       if (mounted) _showError('تعذر اختيار الملف: $e');
     }
@@ -1665,8 +1664,10 @@ class _ChatPageState extends State<ChatPage> {
       String? mediaType;
       String? mediaName;
       int? mediaSize;
+      String? uploadedPath;
       if (attachment != null) {
-        final ext = attachment!.path.split('.').last.toLowerCase().split('?').first;
+        final attachmentPath = attachment!.path ?? '';
+        final ext = (attachment!.extension ?? attachment!.name.split('.').last).toLowerCase().split('?').first;
         final mime = (attachment!.mimeType ?? '').toLowerCase();
         if (mime.startsWith('image/') || {'jpg','jpeg','png','gif','webp','heic','heif'}.contains(ext)) {
           mediaType = 'image';
@@ -1678,14 +1679,29 @@ class _ChatPageState extends State<ChatPage> {
         final safeExt = ext.isEmpty ? 'bin' : ext.replaceAll(RegExp(r'[^a-z0-9]'), '');
         final stamp = DateTime.now().microsecondsSinceEpoch;
         final path = '${user.id}/${widget.id}/$stamp.$safeExt';
-        await sb.storage.from('message-media').upload(
-          path,
-          File(attachment!.path),
-          fileOptions: FileOptions(contentType: _mimeForExtension(safeExt), upsert: false),
+        uploadedPath = path;
+        final options = FileOptions(
+          contentType: mime.isNotEmpty ? mime : _mimeForExtension(safeExt),
+          upsert: false,
         );
+        if (attachment!.bytes != null) {
+          await sb.storage.from('message-media').uploadBinary(
+            path,
+            attachment!.bytes!,
+            fileOptions: options,
+          );
+        } else if (attachmentPath.isNotEmpty) {
+          await sb.storage.from('message-media').upload(
+            path,
+            File(attachmentPath),
+            fileOptions: options,
+          );
+        } else {
+          throw Exception('تعذر قراءة الملف المحدد.');
+        }
         mediaUrl = path;
         mediaName = attachment!.name;
-        mediaSize = await File(attachment!.path).length();
+        mediaSize = attachment!.size;
       }
 
       await sb.from('messages').insert({
@@ -1701,6 +1717,11 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) setState(() => attachment = null);
       await load();
     } catch (e) {
+      if (uploadedPath != null) {
+        try {
+          await sb.storage.from('message-media').remove([uploadedPath!]);
+        } catch (_) {}
+      }
       if (mounted) _showError('فشل إرسال الرسالة: $e');
     } finally {
       if (mounted) setState(() => sending = false);
