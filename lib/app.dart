@@ -146,10 +146,10 @@ class NApp extends StatelessWidget {
           centerTitle: true,
         ),
         navigationBarTheme: const NavigationBarThemeData(
-          backgroundColor: const Color(0xFF0B0D13),
-          indicatorColor: const Color(0xFF17202A),
+          backgroundColor: Color(0xFF0B0D13),
+          indicatorColor: Color(0xFF17202A),
           labelTextStyle: WidgetStatePropertyAll(
-            const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -458,7 +458,7 @@ class _AuthPageState extends State<AuthPage> {
           children: [
             const Positioned.fill(
               child: DecoratedBox(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topRight,
                     end: Alignment.bottomLeft,
