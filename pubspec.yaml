@@ -1,7 +1,7 @@
 name: n_app
 description: N - Arabic social video platform
 publish_to: "none"
-version: 5.0.0+50
+version: 5.0.3+53
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -12,9 +12,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.8.0
   image_picker: ^1.1.2
+  file_picker: ^8.1.7
+  url_launcher: ^6.3.1
   video_player: ^2.10.0
   uuid: ^4.5.1
   intl: ^0.19.0
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

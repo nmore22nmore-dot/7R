@@ -34,13 +34,6 @@ create table if not exists public.posts (
   created_at timestamptz default now()
 );
 
--- Normalize legacy public Storage URLs so the private-bucket policies can still resolve old content.
-update public.posts
-set media_url = regexp_replace(media_url, '^.*/storage/v1/object/public/post-media/', '')
-where media_url like '%/storage/v1/object/public/post-media/%';
-update public.messages
-set media_url = regexp_replace(media_url, '^.*/storage/v1/object/public/message-media/', '')
-where media_url like '%/storage/v1/object/public/message-media/%';
 
 create table if not exists public.post_likes (
   post_id uuid references public.posts(id) on delete cascade,
@@ -104,9 +97,16 @@ create table if not exists public.messages (
   sender_id uuid references auth.users(id) on delete cascade,
   body text default '',
   media_url text,
-  media_type text check(media_type in ('image','video') or media_type is null),
+  media_type text check(media_type in ('image','video','file') or media_type is null),
+  media_name text,
+  media_size bigint,
   created_at timestamptz default now()
 );
+
+-- Upgrade the message attachment schema for existing databases.
+alter table public.messages drop constraint if exists messages_media_type_check;
+alter table public.messages add constraint messages_media_type_check
+  check(media_type in ('image','video','file') or media_type is null);
 
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
@@ -167,6 +167,14 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
 for each row execute function public.handle_new_user();
 
+-- Normalize legacy public Storage URLs after all referenced tables exist.
+update public.posts
+set media_url = regexp_replace(media_url, '^.*/storage/v1/object/public/post-media/', '')
+where media_url like '%/storage/v1/object/public/post-media/%';
+update public.messages
+set media_url = regexp_replace(media_url, '^.*/storage/v1/object/public/message-media/', '')
+where media_url like '%/storage/v1/object/public/message-media/%';
+
 alter table public.profiles enable row level security;
 alter table public.posts enable row level security;
 alter table public.post_likes enable row level security;
@@ -180,6 +188,7 @@ alter table public.stories enable row level security;
 alter table public.user_coins enable row level security;
 alter table public.premium_usernames enable row level security;
 
+drop policy if exists "profiles read" on profiles;
 create policy "profiles read" on profiles for select using(true);
 drop policy if exists "profiles own update" on profiles;
 create policy "profiles own update" on profiles for update to authenticated
@@ -190,25 +199,39 @@ create policy "profiles own insert" on profiles for insert to authenticated
 with check (auth.uid()=id and is_admin=false and is_verified=false);
 
 drop policy if exists "posts public read" on posts;
+drop policy if exists "posts visible read" on posts;
 create policy "posts visible read" on posts for select to authenticated using (
  auth.uid()=user_id or visibility='public' or (visibility='followers' and exists(select 1 from public.follows f where f.follower_id=auth.uid() and f.following_id=posts.user_id))
 );
+drop policy if exists "posts own insert" on posts;
 create policy "posts own insert" on posts for insert with check(auth.uid()=user_id);
+drop policy if exists "posts own update" on posts;
 create policy "posts own update" on posts for update using(auth.uid()=user_id);
+drop policy if exists "posts own delete" on posts;
 create policy "posts own delete" on posts for delete using(auth.uid()=user_id);
 
+drop policy if exists "likes read" on post_likes;
 create policy "likes read" on post_likes for select using(true);
+drop policy if exists "likes own" on post_likes;
 create policy "likes own" on post_likes for insert with check(auth.uid()=user_id);
+drop policy if exists "likes delete" on post_likes;
 create policy "likes delete" on post_likes for delete using(auth.uid()=user_id);
 
+drop policy if exists "saved own" on saved_posts;
 create policy "saved own" on saved_posts for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+drop policy if exists "follows read" on follows;
 create policy "follows read" on follows for select using(true);
+drop policy if exists "follows own" on follows;
 create policy "follows own" on follows for all using(auth.uid()=follower_id) with check(auth.uid()=follower_id);
+drop policy if exists "comments read" on comments;
 create policy "comments read" on comments for select using(true);
+drop policy if exists "comments own" on comments;
 create policy "comments own" on comments for insert with check(auth.uid()=user_id);
+drop policy if exists "comments delete" on comments;
 create policy "comments delete" on comments for delete using(auth.uid()=user_id);
 
 drop policy if exists "conversations member" on conversations;
+drop policy if exists "conversations member read" on conversations;
 create policy "conversations member read" on conversations for select to authenticated using(auth.uid()=user_a or auth.uid()=user_b);
 create or replace function public.create_conversation(p_other_user uuid) returns uuid language plpgsql security definer set search_path=public as $$
 declare me uuid:=auth.uid(); a uuid; b uuid; cid uuid;
@@ -236,19 +259,34 @@ drop trigger if exists message_conversation_touch on public.messages;
 create trigger message_conversation_touch after insert on public.messages
 for each row execute function public.touch_conversation_from_message();
 
+drop policy if exists "messages member" on messages;
 create policy "messages member" on messages for select using(exists(select 1 from conversations c where c.id=conversation_id and (c.user_a=auth.uid() or c.user_b=auth.uid())));
+drop policy if exists "messages sender" on messages;
 create policy "messages sender" on messages for insert with check(auth.uid()=sender_id and exists(select 1 from conversations c where c.id=conversation_id and (c.user_a=auth.uid() or c.user_b=auth.uid())));
+drop policy if exists "notifications own" on notifications;
 create policy "notifications own" on notifications for select using(auth.uid()=user_id);
+drop policy if exists "stories read" on stories;
 create policy "stories read" on stories for select using(expires_at>now());
+drop policy if exists "stories own" on stories;
 create policy "stories own" on stories for all using(auth.uid()=user_id) with check(auth.uid()=user_id);
+drop policy if exists "coins own" on user_coins;
 create policy "coins own" on user_coins for select using(auth.uid()=user_id);
+drop policy if exists "premium read" on premium_usernames;
 create policy "premium read" on premium_usernames for select using(status='available' or assigned_to=auth.uid() or public.is_admin());
 
 
+
+create index if not exists posts_created_at_idx on public.posts(created_at desc);
+create index if not exists posts_user_created_at_idx on public.posts(user_id, created_at desc);
+create index if not exists follows_following_idx on public.follows(following_id);
+create index if not exists comments_post_created_at_idx on public.comments(post_id, created_at desc);
+create index if not exists messages_conversation_created_at_idx on public.messages(conversation_id, created_at);
+create index if not exists notifications_user_created_at_idx on public.notifications(user_id, created_at desc);
+
 -- N Storage: bucket + policies required for video/image publishing.
-insert into storage.buckets (id, name, public)
-values ('post-media', 'post-media', false)
-on conflict (id) do update set public = false;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('post-media', 'post-media', false, 209715200)
+on conflict (id) do update set public = false, file_size_limit = 209715200;
 
 drop policy if exists "N post media upload" on storage.objects;
 create policy "N post media upload"
@@ -287,15 +325,18 @@ $$;
 revoke all on function public.can_read_post_media(text) from public;
 grant execute on function public.can_read_post_media(text) to authenticated;
 drop policy if exists "N post media public read" on storage.objects;
+drop policy if exists "N post media access" on storage.objects;
 create policy "N post media access" on storage.objects for select to authenticated using(bucket_id='post-media' and public.can_read_post_media(name));
 
 
 -- N message media: attachments sent inside conversations.
 alter table public.messages add column if not exists media_type text;
+alter table public.messages add column if not exists media_name text;
+alter table public.messages add column if not exists media_size bigint;
 
-insert into storage.buckets (id, name, public)
-values ('message-media', 'message-media', false)
-on conflict (id) do update set public = false;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('message-media', 'message-media', false, 52428800)
+on conflict (id) do update set public = false, file_size_limit = 52428800;
 
 drop policy if exists "N message media upload" on storage.objects;
 create policy "N message media upload"
@@ -307,10 +348,20 @@ with check (
 );
 
 drop policy if exists "N message media public read" on storage.objects;
-create policy "N message media public read"
+drop policy if exists "N message media access" on storage.objects;
+create or replace function public.can_read_message_media(object_name text) returns boolean language sql stable security definer set search_path=public as $$
+select exists (
+  select 1 from public.conversations c
+  where split_part(object_name, '/', 2) = c.id::text
+    and (c.user_a=auth.uid() or c.user_b=auth.uid())
+);
+$$;
+revoke all on function public.can_read_message_media(text) from public;
+grant execute on function public.can_read_message_media(text) to authenticated;
+create policy "N message media access"
 on storage.objects for select
-to public
-using (bucket_id = 'message-media');
+to authenticated
+using (bucket_id = 'message-media' and public.can_read_message_media(name));
 
 drop policy if exists "N message media update" on storage.objects;
 create policy "N message media update"

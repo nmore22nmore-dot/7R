@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
+import 'package:share_plus/share_plus.dart';
 
 final sb = Supabase.instance.client;
 
@@ -13,6 +16,34 @@ const panel = Color(0xFF11131B);
 const cyan = Color(0xFF00C8FF);
 const pink = Color(0xFFFF287A);
 const authRedirectUrl = 'n://auth-callback';
+
+String _mimeForExtension(String ext) {
+  switch (ext.toLowerCase()) {
+    case 'mp4': return 'video/mp4';
+    case 'mov': return 'video/quicktime';
+    case 'm4v': return 'video/x-m4v';
+    case 'webm': return 'video/webm';
+    case 'avi': return 'video/x-msvideo';
+    case 'mkv': return 'video/x-matroska';
+    case 'jpg': case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
+    case 'gif': return 'image/gif';
+    case 'webp': return 'image/webp';
+    case 'heic': return 'image/heic';
+    case 'heif': return 'image/heif';
+    case 'pdf': return 'application/pdf';
+    case 'zip': return 'application/zip';
+    case 'txt': return 'text/plain';
+    case 'json': return 'application/json';
+    case 'doc': return 'application/msword';
+    case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'xls': return 'application/vnd.ms-excel';
+    case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'ppt': return 'application/vnd.ms-powerpoint';
+    case 'pptx': return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    default: return 'application/octet-stream';
+  }
+}
 
 
 String _storagePath(String value, String bucket) {
@@ -658,82 +689,53 @@ Widget _glow(Color color, double size) {
 
 class Shell extends StatefulWidget {
   const Shell({super.key});
-
-  @override
-  State<Shell> createState() => _ShellState();
+  @override State<Shell> createState() => _ShellState();
 }
 
 class _ShellState extends State<Shell> {
   int index = 0;
-
-  final pages = const [
-    HomePage(),
-    FollowingPage(),
-    PublishPage(),
-    MessagesPage(),
-    ProfilePage(),
-  ];
+  final pages = const [HomePage(), FollowingPage(), PublishPage(), MessagesPage(), ProfilePage()];
 
   @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        extendBody: true,
-        body: IndexedStack(
-          index: index,
-          children: pages,
-        ),
-        bottomNavigationBar: SafeArea(
-          minimum: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-          child: Container(
-            height: 70,
-            decoration: BoxDecoration(
-              color: const Color(0xF20C0F16),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: const Color(0xFF202833)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x66000000),
-                  blurRadius: 22,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
+        backgroundColor: Colors.black,
+        body: IndexedStack(index: index, children: pages),
+        bottomNavigationBar: Container(
+          height: 62,
+          decoration: const BoxDecoration(
+            color: Colors.black,
+            border: Border(top: BorderSide(color: Color(0xFF202020), width: .6)),
+          ),
+          child: SafeArea(
+            top: false,
             child: Row(
               children: [
                 _navItem(0, Icons.home_outlined, Icons.home, 'الرئيسية'),
-                _navItem(1, Icons.people_outline, Icons.people, 'الأصدقاء'),
+                _navItem(1, Icons.people_outline, Icons.people, 'المتابعة'),
                 Expanded(
                   child: Center(
                     child: GestureDetector(
                       onTap: _openCreateMenu,
                       child: Container(
-                        width: 54,
-                        height: 46,
+                        width: 46, height: 30,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [cyan, Colors.white, pink],
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x5500C8FF),
-                              blurRadius: 15,
-                            ),
-                          ],
+                          borderRadius: BorderRadius.circular(7),
+                          gradient: const LinearGradient(colors: [Color(0xFF25F4EE), Colors.white, Color(0xFFFF0050)]),
                         ),
-                        child: const Icon(
-                          Icons.add,
-                          color: Colors.black,
-                          size: 30,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(5)),
+                          child: const Icon(Icons.add, color: Colors.black, size: 23),
                         ),
                       ),
                     ),
                   ),
                 ),
-                _navItem(3, Icons.mail_outline, Icons.mail, 'الرسائل'),
-                _navItem(4, Icons.person_outline, Icons.person, 'الملف الشخصي'),
+                _navItem(3, Icons.chat_bubble_outline, Icons.chat_bubble, 'الرسائل'),
+                _navItem(4, Icons.person_outline, Icons.person, 'الملف'),
               ],
             ),
           ),
@@ -744,90 +746,37 @@ class _ShellState extends State<Shell> {
 
   void _openCreateMenu() {
     showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: panel,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _createAction(Icons.video_call, 'فيديو', () {
-                Navigator.pop(context);
-                setState(() => index = 2);
-              }),
-              _createAction(Icons.image_outlined, 'صورة', () {
-                Navigator.pop(context);
-                setState(() => index = 2);
-              }),
-              _createAction(Icons.sensors, 'بث مباشر', () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const LivePage()));
-              }),
-              _createAction(Icons.auto_awesome, 'N AI', () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const AiPage()));
-              }),
-              _createAction(Icons.history_toggle_off, 'قصة', () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('إضافة القصص قيد الربط مع التخزين.')));
-              }),
-            ],
-          ),
-        ),
-      ),
+      context: context, backgroundColor: const Color(0xFF181818), showDragHandle: true,
+      builder: (context) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 6, 18, 20),
+        child: Wrap(spacing: 10, runSpacing: 10, children: [
+          _createAction(Icons.video_call_outlined, 'فيديو', () { Navigator.pop(context); setState(() => index = 2); }),
+          _createAction(Icons.image_outlined, 'صورة', () { Navigator.pop(context); setState(() => index = 2); }),
+          _createAction(Icons.sensors, 'بث مباشر', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const LivePage())); }),
+          _createAction(Icons.auto_awesome, 'N AI', () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const AiPage())); }),
+        ]),
+      )),
     );
   }
 
-  Widget _createAction(IconData icon, String title, VoidCallback onTap) {
-    return SizedBox(
-      width: 92,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(children: [
-            CircleAvatar(radius: 28, backgroundColor: const Color(0xFF202833), child: Icon(icon, color: cyan)),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          ]),
-        ),
-      ),
-    );
-  }
+  Widget _createAction(IconData icon, String title, VoidCallback onTap) => SizedBox(
+    width: 82, child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10), child: Column(children: [
+        CircleAvatar(radius: 25, backgroundColor: const Color(0xFF282828), child: Icon(icon, color: Colors.white)),
+        const SizedBox(height: 7), Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+      ])),
+  );
 
   Widget _navItem(int i, IconData normal, IconData active, String label) {
     final selected = index == i;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: () => setState(() => index = i),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              selected ? active : normal,
-              color: selected ? cyan : Colors.white70,
-              size: 23,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: selected ? cyan : Colors.white70,
-                fontSize: 9.5,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return Expanded(child: InkWell(
+      onTap: () => setState(() => index = i),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(selected ? active : normal, color: selected ? Colors.white : Colors.white70, size: 23),
+        const SizedBox(height: 2), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 9, fontWeight: selected ? FontWeight.w800 : FontWeight.w500)),
+      ]),
+    ));
   }
 }
 
@@ -942,110 +891,41 @@ class FollowingPage extends StatelessWidget {
 
 class FeedPage extends StatefulWidget {
   final bool following;
-
-  const FeedPage({
-    super.key,
-    required this.following,
-  });
-
-  @override
-  State<FeedPage> createState() => _FeedPageState();
+  const FeedPage({super.key, required this.following});
+  @override State<FeedPage> createState() => _FeedPageState();
 }
 
 class _FeedPageState extends State<FeedPage> {
   List<Map<String, dynamic>> posts = [];
   bool loading = true;
   int activeIndex = 0;
+  late bool followingTab;
 
-  @override
-  void initState() {
-    super.initState();
-    load();
-  }
+  @override void initState() { super.initState(); followingTab = widget.following; load(); }
 
   Future<void> load() async {
     if (mounted) setState(() => loading = true);
-    try {
-      final data = await loadPostsWithProfiles(following: widget.following);
-      if (mounted) setState(() => posts = data);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحميل المحتوى: $e')));
-    } finally {
-      if (mounted) setState(() => loading = false);
-    }
+    try { final data = await loadPostsWithProfiles(following: followingTab); if (mounted) setState(() => posts = data); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحميل المحتوى: $e'))); }
+    finally { if (mounted) setState(() => loading = false); }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          loading
-              ? const Center(child: CircularProgressIndicator())
-              : posts.isEmpty
-                  ? RefreshIndicator(
-                      onRefresh: load,
-                      child: ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: const [
-                          SizedBox(height: 300),
-                          Center(
-                            child: Text(
-                              'لا توجد فيديوهات بعد.\nاسحب للتحديث أو ابدأ بالنشر من زر +',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: load,
-                      child: PageView.builder(
-                        scrollDirection: Axis.vertical,
-                        itemCount: posts.length,
-                        onPageChanged: (i) => setState(() => activeIndex = i),
-                        itemBuilder: (_, i) => VideoCard(post: posts[i], active: i == activeIndex),
-                      ),
-                    ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage())),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0x6610131B),
-                    ),
-                    icon: const Icon(Icons.search),
-                  ),
-                  const Spacer(),
-                  _FeedTab(
-                    active: !widget.following,
-                    title: 'لك',
-                  ),
-                  const SizedBox(width: 22),
-                  _FeedTab(
-                    active: widget.following,
-                    title: 'متابعة',
-                  ),
-                  const Spacer(),
-                  Stack(children: [
-                    IconButton(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage())),
-                      style: IconButton.styleFrom(backgroundColor: const Color(0x6610131B)),
-                      icon: const Icon(Icons.inbox_outlined),
-                    ),
-                    Positioned(top: 5, right: 5, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: pink, shape: BoxShape.circle))),
-                  ]),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  @override Widget build(BuildContext context) {
+    return Scaffold(backgroundColor: Colors.black, body: Stack(children: [
+      loading ? const Center(child: CircularProgressIndicator(strokeWidth: 2)) : posts.isEmpty
+        ? RefreshIndicator(onRefresh: load, child: ListView(physics: const AlwaysScrollableScrollPhysics(), children: const [SizedBox(height: 300), Center(child: Text('لا توجد فيديوهات بعد', style: TextStyle(color: Colors.white70))) ]))
+        : RefreshIndicator(onRefresh: load, child: PageView.builder(scrollDirection: Axis.vertical, itemCount: posts.length,
+            onPageChanged: (i) => setState(() => activeIndex = i), itemBuilder: (_, i) => VideoCard(post: posts[i], active: i == activeIndex))),
+      SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(10, 4, 10, 0), child: Row(children: [
+        IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage())), icon: const Icon(Icons.search, color: Colors.white)),
+        const Spacer(),
+        GestureDetector(onTap: () => setState(() { followingTab = false; load(); }), child: _FeedTab(active: !followingTab, title: 'لك')),
+        const SizedBox(width: 24),
+        GestureDetector(onTap: () => setState(() { followingTab = true; load(); }), child: _FeedTab(active: followingTab, title: 'أتابع')),
+        const Spacer(),
+        IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage())), icon: const Icon(Icons.inbox_outlined, color: Colors.white)),
+      ]))),
+    ]));
   }
 }
 
@@ -1088,255 +968,85 @@ class _FeedTab extends StatelessWidget {
 class VideoCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final bool active;
-
-  const VideoCard({
-    super.key,
-    required this.post,
-    this.active = true,
-  });
-
-  @override
-  State<VideoCard> createState() => _VideoCardState();
+  const VideoCard({super.key, required this.post, this.active = true});
+  @override State<VideoCard> createState() => _VideoCardState();
 }
 
 class _VideoCardState extends State<VideoCard> {
   VideoPlayerController? c;
-  bool liked = false;
-  bool saved = false;
+  bool liked = false, saved = false, following = false;
   int likes = 0;
+  String get url => (widget.post['media_url'] ?? '').toString();
+  String get username => (widget.post['profile']?['username'] ?? 'N').toString();
+  String get avatar => (widget.post['profile']?['avatar_url'] ?? '').toString();
 
-  String get url {
-    return (widget.post['media_url'] ?? '').toString();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-
-    final rawLikes = widget.post['likes_count'];
-    likes = rawLikes is int ? rawLikes : 0;
-
+  @override void initState() { super.initState();
+    final raw = widget.post['likes_count']; likes = raw is int ? raw : int.tryParse('$raw') ?? 0;
     if (url.isNotEmpty && (widget.post['media_type'] ?? 'video') == 'video') {
-      c = VideoPlayerController.networkUrl(Uri.parse(url))..initialize().then((_) {
-        if (mounted) {
-          setState(() {});
-          c!.setLooping(true);
-          if (widget.active) c!.play();
-        }
-      });
+      c = VideoPlayerController.networkUrl(Uri.parse(url))..initialize().then((_) { if (mounted) { setState(() {}); c!.setLooping(true); if (widget.active) c!.play(); }});
     }
     _loadReactionState();
   }
-
   Future<void> _loadReactionState() async {
-    final user = sb.auth.currentUser;
-    if (user == null) return;
-    try {
-      final results = await Future.wait([
-        sb.from('post_likes').select('post_id').eq('post_id', widget.post['id']).eq('user_id', user.id).maybeSingle(),
-        sb.from('saved_posts').select('post_id').eq('post_id', widget.post['id']).eq('user_id', user.id).maybeSingle(),
-      ]);
-      if (mounted) {
-        setState(() {
-          liked = results[0] != null;
-          saved = results[1] != null;
-        });
-      }
-    } catch (_) {}
+    final user = sb.auth.currentUser; if (user == null) return;
+    try { final r = await Future.wait([
+      sb.from('post_likes').select('post_id').eq('post_id', widget.post['id']).eq('user_id', user.id).maybeSingle(),
+      sb.from('saved_posts').select('post_id').eq('post_id', widget.post['id']).eq('user_id', user.id).maybeSingle(),
+      sb.from('follows').select('following_id').eq('follower_id', user.id).eq('following_id', widget.post['user_id']).maybeSingle(),
+    ]); if (mounted) setState(() { liked = r[0] != null; saved = r[1] != null; following = r[2] != null; }); } catch (_) {}
   }
+  @override void didUpdateWidget(covariant VideoCard oldWidget) { super.didUpdateWidget(oldWidget); if (c?.value.isInitialized != true) return; if (widget.active && !oldWidget.active) c!.play(); if (!widget.active && oldWidget.active) c!.pause(); }
+  @override void dispose() { c?.dispose(); super.dispose(); }
 
-  @override
-  void didUpdateWidget(covariant VideoCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (c?.value.isInitialized != true) return;
-    if (widget.active && !oldWidget.active) c!.play();
-    if (!widget.active && oldWidget.active) c!.pause();
-  }
+  Future<void> like() async { final u = sb.auth.currentUser; if (u == null) return; try {
+    if (liked) { await sb.from('post_likes').delete().eq('post_id', widget.post['id']).eq('user_id', u.id); likes = likes > 0 ? likes - 1 : 0; }
+    else { await sb.from('post_likes').insert({'post_id': widget.post['id'], 'user_id': u.id}); likes++; }
+    if (mounted) setState(() => liked = !liked);
+  } catch (_) {} }
+  Future<void> save() async { final u=sb.auth.currentUser; if(u==null)return; try { if(saved) await sb.from('saved_posts').delete().eq('post_id',widget.post['id']).eq('user_id',u.id); else await sb.from('saved_posts').insert({'post_id':widget.post['id'],'user_id':u.id}); if(mounted)setState(()=>saved=!saved); } catch(_){} }
+  Future<void> toggleFollow() async { final u=sb.auth.currentUser; final target=widget.post['user_id']?.toString(); if(u==null||target==null||u.id==target)return; try { if(following) await sb.from('follows').delete().eq('follower_id',u.id).eq('following_id',target); else await sb.from('follows').insert({'follower_id':u.id,'following_id':target}); if(mounted)setState(()=>following=!following); } catch(_){} }
 
-  @override
-  void dispose() {
-    c?.dispose();
-    super.dispose();
-  }
+  Widget _action(IconData icon, String text, VoidCallback onTap, {bool active=false}) => Padding(padding: const EdgeInsets.only(bottom: 15), child: Column(children: [
+    InkWell(onTap:onTap, child: Icon(icon, color: active ? const Color(0xFFFF2D55) : Colors.white, size: 34)),
+    const SizedBox(height: 2), Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, shadows:[Shadow(blurRadius:3,color:Colors.black)])),
+  ]));
 
-  Future<void> like() async {
-    final user = sb.auth.currentUser;
-
-    if (user == null) {
-      return;
-    }
-
-    final uid = user.id;
-
-    try {
-      if (liked) {
-        await sb
-            .from('post_likes')
-            .delete()
-            .eq('post_id', widget.post['id'])
-            .eq('user_id', uid);
-
-        likes--;
-      } else {
-        await sb.from('post_likes').insert({
-          'post_id': widget.post['id'],
-          'user_id': uid,
-        });
-
-        likes++;
-      }
-
-      if (mounted) {
-        setState(() {
-          liked = !liked;
-        });
-      }
-    } catch (_) {}
-  }
-
-  Future<void> save() async {
-    final user = sb.auth.currentUser;
-
-    if (user == null) {
-      return;
-    }
-
-    final uid = user.id;
-
-    try {
-      if (saved) {
-        await sb
-            .from('saved_posts')
-            .delete()
-            .eq('post_id', widget.post['id'])
-            .eq('user_id', uid);
-      } else {
-        await sb.from('saved_posts').insert({
-          'post_id': widget.post['id'],
-          'user_id': uid,
-        });
-      }
-
-      if (mounted) {
-        setState(() {
-          saved = !saved;
-        });
-      }
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onDoubleTap: like,
-      child: Stack(
-        fit: StackFit.expand,
-      children: [
-        if ((widget.post['media_type'] ?? 'video') == 'image' && url.isNotEmpty)
-          Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image_outlined, size: 60)))
-        else if (c?.value.isInitialized == true)
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: c!.value.size.width,
-              height: c!.value.size.height,
-              child: VideoPlayer(c!),
-            ),
-          )
-        else
-          const Center(
-            child: CircularProgressIndicator(),
-          ),
-        Positioned(
-          right: 12,
-          bottom: 120,
-          child: Column(
-            children: [
-              IconButton(
-                onPressed: like,
-                icon: Icon(
-                  liked ? Icons.favorite : Icons.favorite_border,
-                  color: liked ? pink : Colors.white,
-                  size: 34,
-                ),
-              ),
-              Text('$likes'),
-              IconButton(
-                onPressed: () {
-                  showComments(
-                    context,
-                    widget.post['id'],
-                  );
-                },
-                icon: const Icon(
-                  Icons.comment,
-                  size: 32,
-                ),
-              ),
-              IconButton(
-                onPressed: save,
-                icon: Icon(
-                  saved ? Icons.bookmark : Icons.bookmark_border,
-                  size: 32,
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  showShare(context);
-                },
-                icon: const Icon(
-                  Icons.share,
-                  size: 32,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          right: 18,
-          left: 88,
-          bottom: 28,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '@${widget.post['profile']?['username'] ?? 'N'}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                widget.post['caption'] ?? '',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              const Text('N original sound'),
-            ],
-          ),
-        ),
-      ],
-      ),
-    );
-  }
+  @override Widget build(BuildContext context) => GestureDetector(onDoubleTap: like, child: Stack(fit: StackFit.expand, children: [
+    if ((widget.post['media_type'] ?? 'video') == 'image' && url.isNotEmpty) Image.network(url, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Center(child:Icon(Icons.broken_image_outlined,size:60)))
+    else if (c?.value.isInitialized == true) FittedBox(fit:BoxFit.cover, child:SizedBox(width:c!.value.size.width,height:c!.value.size.height,child:VideoPlayer(c!)))
+    else const Center(child:CircularProgressIndicator(strokeWidth:2)),
+    const Positioned.fill(child: IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter,end: Alignment.bottomCenter,colors:[Colors.transparent,Colors.transparent,Color(0xCC000000)],stops:[0,.55,1]))))),
+    Positioned(top: MediaQuery.of(context).padding.top + 46, right: 10, child: Column(children: [
+      CircleAvatar(radius:28, backgroundColor:const Color(0xFF333333), backgroundImage:avatar.isNotEmpty?NetworkImage(avatar):null, child:avatar.isEmpty?const Icon(Icons.person,color:Colors.white):null),
+      GestureDetector(onTap:toggleFollow, child: Container(width:22,height:22,decoration:BoxDecoration(color:following?Colors.white:const Color(0xFFFF0050),shape:BoxShape.circle,border:Border.all(color:Colors.black,width:2)),child:Icon(following?Icons.check:Icons.add,size:14,color:following?Colors.black:Colors.white))),
+    ])),
+    Positioned(right: 10, bottom: 92, child: Column(children: [
+      _action(liked?Icons.favorite:Icons.favorite_border, '$likes', like, active:liked),
+      _action(Icons.comment_outlined, 'تعليق', () => showComments(context, widget.post['id'])),
+      _action(saved?Icons.bookmark:Icons.bookmark_border, 'حفظ', save, active:saved),
+      _action(Icons.share_outlined, 'مشاركة', () => showShare(context, postId: widget.post['id']?.toString())),
+    ])),
+    Positioned(left:14,right:82,bottom:24,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Text('@$username',style:const TextStyle(fontWeight:FontWeight.w900,fontSize:17)),
+      if((widget.post['caption']??'').toString().trim().isNotEmpty) ...[const SizedBox(height:7),Text((widget.post['caption']??'').toString(),maxLines:3,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14))],
+      const SizedBox(height:7),
+      Row(children:[const Icon(Icons.music_note,size:15),const SizedBox(width:4),Flexible(child:Text('الصوت الأصلي لـ @$username',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600)))])
+    ])),
+  ]));
 }
 
-void showShare(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    builder: (_) {
-      return const SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'شارك رابط المنشور من خلال مشاركة النظام.',
-          ),
-        ),
+Future<void> showShare(BuildContext context, {String? postId}) async {
+  final id = postId ?? '';
+  final link = id.isEmpty ? 'N — منصة الفيديو الاجتماعي' : 'https://n.app/p/$id';
+  try {
+    await Share.share(link, subject: 'مشاركة من N');
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح نافذة المشاركة.')),
       );
-    },
-  );
+    }
+  }
 }
 
 Future<List<Map<String, dynamic>>> _loadComments(dynamic postId) async {
@@ -1610,15 +1320,30 @@ class _PublishPageState extends State<PublishPage> {
   bool imageMode = false;
   bool busy = false;
   String visibility = 'public';
+  String? selectedMime;
 
   Future<void> pick(ImageSource src) async {
     final x = imageMode ? await ImagePicker().pickImage(source: src, imageQuality: 90) : await ImagePicker().pickVideo(source: src);
 
     if (x != null && mounted) {
-      setState(() {
-        file = x;
-      });
+      setState(() { file = x; selectedMime = x.mimeType; });
     }
+  }
+
+  Future<void> pickAnyFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: false, type: FileType.media, withData: false);
+      if (result == null || result.files.isEmpty) return;
+      final f = result.files.single;
+      if (f.path == null) return;
+      const max = 200 * 1024 * 1024;
+      if (f.size > max) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الحد الأقصى للفيديو أو الصورة 200 ميجابايت.'))); return; }
+      final ext = (f.extension ?? '').toLowerCase();
+      final isImage = (f.mimeType ?? '').startsWith('image/') || {'jpg','jpeg','png','gif','webp','heic','heif'}.contains(ext);
+      final isVideo = (f.mimeType ?? '').startsWith('video/') || {'mp4','mov','m4v','webm','avi','mkv'}.contains(ext);
+      if (!isImage && !isVideo) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر صورة أو فيديو مدعومًا.'))); return; }
+      if (mounted) setState(() { file = XFile(f.path!, name: f.name, mimeType: f.mimeType); imageMode = isImage; selectedMime = f.mimeType; });
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر اختيار الوسائط: $e'))); }
   }
 
   Future<void> publish() async {
@@ -1646,6 +1371,7 @@ class _PublishPageState extends State<PublishPage> {
       await sb.storage.from('post-media').upload(
             path,
             File(file!.path),
+            fileOptions: FileOptions(contentType: _mimeForExtension(ext), upsert: false),
           );
 
       final mediaPath = path;
@@ -1661,9 +1387,7 @@ class _PublishPageState extends State<PublishPage> {
       if (mounted) {
         caption.clear();
 
-        setState(() {
-          file = null;
-        });
+        setState(() { file = null; selectedMime = null; });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1721,6 +1445,8 @@ class _PublishPageState extends State<PublishPage> {
                     label: Text(imageMode ? 'اختيار صورة' : 'رفع فيديو'),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(child: OutlinedButton.icon(onPressed: busy ? null : pickAnyFile, icon: const Icon(Icons.folder_open_outlined), label: const Text('من الملفات'))),
               ],
             ),
             const SizedBox(height: 15),
@@ -1809,7 +1535,7 @@ class _MessagesPageState extends State<MessagesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الرسائل'),
+        title: const Text('الرسائل', style: TextStyle(fontWeight: FontWeight.w900)),
       ),
       body: rows.isEmpty
           ? const Center(
@@ -1904,8 +1630,24 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> pickAttachment() async {
     try {
-      final x = await ImagePicker().pickMedia();
-      if (x != null && mounted) setState(() => attachment = x);
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        type: FileType.any,
+        withData: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.single;
+      final path = picked.path;
+      if (path == null || path.isEmpty) {
+        _showError('تعذر الوصول إلى الملف المحدد.');
+        return;
+      }
+      const maxBytes = 50 * 1024 * 1024;
+      if (picked.size > maxBytes) {
+        _showError('حجم الملف يتجاوز الحد المسموح وهو 50 ميجابايت.');
+        return;
+      }
+      if (mounted) setState(() => attachment = XFile(path, name: picked.name));
     } catch (e) {
       if (mounted) _showError('تعذر اختيار الملف: $e');
     }
@@ -1921,14 +1663,29 @@ class _ChatPageState extends State<ChatPage> {
     try {
       String? mediaUrl;
       String? mediaType;
+      String? mediaName;
+      int? mediaSize;
       if (attachment != null) {
         final ext = attachment!.path.split('.').last.toLowerCase().split('?').first;
-        final isVideo = {'mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv'}.contains(ext);
-        mediaType = isVideo ? 'video' : 'image';
-        final safeExt = ext.isEmpty ? (isVideo ? 'mp4' : 'jpg') : ext;
-        final path = '${user.id}/${widget.id}/${DateTime.now().millisecondsSinceEpoch}.$safeExt';
-        await sb.storage.from('message-media').upload(path, File(attachment!.path));
+        final mime = (attachment!.mimeType ?? '').toLowerCase();
+        if (mime.startsWith('image/') || {'jpg','jpeg','png','gif','webp','heic','heif'}.contains(ext)) {
+          mediaType = 'image';
+        } else if (mime.startsWith('video/') || {'mp4','mov','m4v','webm','avi','mkv'}.contains(ext)) {
+          mediaType = 'video';
+        } else {
+          mediaType = 'file';
+        }
+        final safeExt = ext.isEmpty ? 'bin' : ext.replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final stamp = DateTime.now().microsecondsSinceEpoch;
+        final path = '${user.id}/${widget.id}/$stamp.$safeExt';
+        await sb.storage.from('message-media').upload(
+          path,
+          File(attachment!.path),
+          fileOptions: FileOptions(contentType: _mimeForExtension(safeExt), upsert: false),
+        );
         mediaUrl = path;
+        mediaName = attachment!.name;
+        mediaSize = await File(attachment!.path).length();
       }
 
       await sb.from('messages').insert({
@@ -1937,6 +1694,8 @@ class _ChatPageState extends State<ChatPage> {
         'body': body,
         'media_url': mediaUrl,
         'media_type': mediaType,
+        'media_name': mediaName,
+        'media_size': mediaSize,
       });
       ctrl.clear();
       if (mounted) setState(() => attachment = null);
@@ -1967,7 +1726,8 @@ class _ChatPageState extends State<ChatPage> {
   Widget _messageMedia(Map<String, dynamic> m) {
     final url = (m['media_url'] ?? '').toString();
     if (url.isEmpty) return const SizedBox.shrink();
-    final type = (m['media_type'] ?? '').toString();
+    final type = (m['media_type'] ?? 'file').toString();
+    final name = (m['media_name'] ?? 'ملف مرفق').toString();
     if (type == 'image') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 7),
@@ -1981,7 +1741,28 @@ class _ChatPageState extends State<ChatPage> {
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
-      child: Row(mainAxisSize: MainAxisSize.min, children: const [Icon(Icons.videocam_outlined), SizedBox(width: 6), Text('فيديو مرفق')]),
+      child: FutureBuilder<String?>(
+        future: _signedMessageUrl(url),
+        builder: (_, snap) => InkWell(
+          onTap: !snap.hasData ? null : () async {
+            final uri = Uri.tryParse(snap.data!);
+            if (uri != null && !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              _showError('تعذر فتح المرفق.');
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: const Color(0xFF1A2029), borderRadius: BorderRadius.circular(10)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(type == 'video' ? Icons.videocam_outlined : Icons.insert_drive_file_outlined),
+              const SizedBox(width: 8),
+              Flexible(child: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 6),
+              const Icon(Icons.open_in_new, size: 17),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 
@@ -2065,13 +1846,16 @@ class _ProfilePageState extends State<ProfilePage> {
       final results = await Future.wait([
         sb.from('profiles').select().eq('id', user.id).maybeSingle(),
         sb.from('posts').select().eq('user_id', user.id).order('created_at', ascending: false),
+        sb.from('follows').select('follower_id').eq('following_id', user.id),
+        sb.from('follows').select('following_id').eq('follower_id', user.id),
+        sb.from('post_likes').select('post_id').eq('user_id', user.id),
       ]);
       if (!mounted) return;
-      setState(() {
-        p = results[0] as Map<String, dynamic>?;
-        myPosts = List<Map<String, dynamic>>.from(results[1] as List);
-        loading = false;
-      });
+      final profile = Map<String, dynamic>.from((results[0] as Map?) ?? {});
+      profile['followers_count'] = (results[2] as List).length;
+      profile['following_count'] = (results[3] as List).length;
+      profile['likes_count'] = (results[4] as List).length;
+      setState(() { p = profile; myPosts = List<Map<String, dynamic>>.from(results[1] as List); loading = false; });
     } catch (_) {
       if (mounted) setState(() => loading = false);
     }
@@ -2194,7 +1978,7 @@ class SettingsPage extends StatelessWidget {
         _section('الخصوصية'),
         _item(context, Icons.lock_outline, 'الخصوصية', 'الحساب الخاص والتحكم بالمحتوى', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPage()))),
         _section('N'),
-        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.0.0', () {}),
+        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.0.1', () {}),
         ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)), onTap: () async { await sb.auth.signOut(); if (context.mounted) Navigator.popUntil(context, (r) => r.isFirst); }),
       ]),
     );
