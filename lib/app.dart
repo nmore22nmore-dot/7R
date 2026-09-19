@@ -765,6 +765,7 @@ class _ShellState extends State<Shell> {
         CircleAvatar(radius: 25, backgroundColor: const Color(0xFF282828), child: Icon(icon, color: Colors.white)),
         const SizedBox(height: 7), Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
       ])),
+    ),
   );
 
   Widget _navItem(int i, IconData normal, IconData active, String label) {
@@ -1326,7 +1327,7 @@ class _PublishPageState extends State<PublishPage> {
     final x = imageMode ? await ImagePicker().pickImage(source: src, imageQuality: 90) : await ImagePicker().pickVideo(source: src);
 
     if (x != null && mounted) {
-      setState(() { file = x; selectedMime = x.mimeType; });
+      setState(() { file = x; selectedMime = _mimeForExtension((x.name.split('.').last).toLowerCase()); });
     }
   }
 
@@ -1339,10 +1340,11 @@ class _PublishPageState extends State<PublishPage> {
       const max = 200 * 1024 * 1024;
       if (f.size > max) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الحد الأقصى للفيديو أو الصورة 200 ميجابايت.'))); return; }
       final ext = (f.extension ?? '').toLowerCase();
-      final isImage = (f.mimeType ?? '').startsWith('image/') || {'jpg','jpeg','png','gif','webp','heic','heif'}.contains(ext);
-      final isVideo = (f.mimeType ?? '').startsWith('video/') || {'mp4','mov','m4v','webm','avi','mkv'}.contains(ext);
+      final mime = _mimeForExtension(ext);
+      final isImage = mime.startsWith('image/');
+      final isVideo = mime.startsWith('video/');
       if (!isImage && !isVideo) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر صورة أو فيديو مدعومًا.'))); return; }
-      if (mounted) setState(() { file = XFile(f.path!, name: f.name, mimeType: f.mimeType); imageMode = isImage; selectedMime = f.mimeType; });
+      if (mounted) setState(() { file = XFile(f.path!, name: f.name); imageMode = isImage; selectedMime = mime; });
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر اختيار الوسائط: $e'))); }
   }
 
@@ -1659,16 +1661,16 @@ class _ChatPageState extends State<ChatPage> {
     if (user == null) return;
 
     setState(() => sending = true);
+    String? uploadedPath;
     try {
       String? mediaUrl;
       String? mediaType;
       String? mediaName;
       int? mediaSize;
-      String? uploadedPath;
       if (attachment != null) {
         final attachmentPath = attachment!.path ?? '';
         final ext = (attachment!.extension ?? attachment!.name.split('.').last).toLowerCase().split('?').first;
-        final mime = (attachment!.mimeType ?? '').toLowerCase();
+        final mime = _mimeForExtension(ext);
         if (mime.startsWith('image/') || {'jpg','jpeg','png','gif','webp','heic','heif'}.contains(ext)) {
           mediaType = 'image';
         } else if (mime.startsWith('video/') || {'mp4','mov','m4v','webm','avi','mkv'}.contains(ext)) {
@@ -1904,10 +1906,10 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await sb.from('profiles').update({'username': username.text.trim(), 'bio': bio.text.trim()}).eq('id', sb.auth.currentUser!.id);
       await load();
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي')));
     } catch (e) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الملف: $e')));
     }
   }
@@ -1971,9 +1973,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _postGrid(List<Map<String, dynamic>> posts) => posts.isEmpty ? const SizedBox(height: 260, child: Center(child: Text('لا توجد فيديوهات بعد'))) : GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.all(2), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2, childAspectRatio: .66), itemCount: posts.length, itemBuilder: (_, i) => FutureBuilder<String?>(future: _signedPostUrl((posts[i]['media_url'] ?? '').toString()), builder: (_, snap) => snap.hasData ? Stack(fit: StackFit.expand, children: [Image.network(snap.data!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)), const Positioned(bottom: 4, right: 4, child: Row(children: [Icon(Icons.play_arrow, size: 14), SizedBox(width: 2), Text('N', style: TextStyle(fontSize: 9))]))]) : const ColoredBox(color: Color(0xFF16181F))));
 }
 
-class _ProfileCountFuture {
-  const _ProfileCountFuture();
-}
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -2010,9 +2009,40 @@ class SettingsPage extends StatelessWidget {
 }
 
 class SimpleNPage extends StatelessWidget {
-  final String title; final IconData icon; final String message;
-  const SimpleNPage({super.key, required this.title, required this.icon, required this.message});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(title)), body: Center(child: Padding(padding: const EdgeInsets.all(30), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 60, color: cyan), const SizedBox(height: 18), Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: Colors.white70))])));
+  final String title;
+  final IconData icon;
+  final String message;
+
+  const SimpleNPage({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 60, color: cyan),
+              const SizedBox(height: 18),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 class QrPage extends StatelessWidget { const QrPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'رمز QR',icon:Icons.qr_code_2,message:'رمز N الخاص بك جاهز للمشاركة.'); }
 class ActivityPage extends StatelessWidget { const ActivityPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'مركز النشاط',icon:Icons.history,message:'هنا يظهر سجل نشاطك وتفاعلاتك في N.'); }
