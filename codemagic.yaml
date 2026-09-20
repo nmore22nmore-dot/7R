@@ -17,6 +17,50 @@ workflows:
             flutter create --platforms=android --org com.n .
           fi
 
+      - name: Configure Firebase Android
+        script: |
+          if [ ! -f firebase/google-services.json ]; then
+            echo "ERROR: firebase/google-services.json is missing"
+            exit 1
+          fi
+
+          mkdir -p android/app
+          cp firebase/google-services.json android/app/google-services.json
+
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+
+          settings = next((p for p in [Path("android/settings.gradle.kts"), Path("android/settings.gradle")] if p.exists()), None)
+          app = next((p for p in [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")] if p.exists()), None)
+          if settings is None or app is None:
+              raise SystemExit("ERROR: Android Gradle files not found")
+
+          st = settings.read_text()
+          if settings.suffix == ".kts":
+              if "com.google.gms.google-services" not in st:
+                  st = re.sub(
+                      r'(plugins\\s*\\{)',
+                      r'\\1\\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                      st, count=1)
+          else:
+              if "com.google.gms.google-services" not in st:
+                  st = re.sub(
+                      r'(plugins\\s*\\{)',
+                      r'\\1\\n    id "com.google.gms.google-services" version "4.4.2" apply false',
+                      st, count=1)
+          settings.write_text(st)
+
+          ap = app.read_text()
+          if "com.google.gms.google-services" not in ap:
+              if app.suffix == ".kts":
+                  ap = re.sub(r'(plugins\\s*\\{)', r'\\1\\n    id("com.google.gms.google-services")', ap, count=1)
+              else:
+                  ap = re.sub(r'(plugins\\s*\\{)', r'\\1\\n    id "com.google.gms.google-services"', ap, count=1)
+          app.write_text(ap)
+          print("Firebase Android configuration added")
+          PYCODE
+
       - name: Configure Android
         script: |
           # file_picker and flutter_plugin_android_lifecycle require Android API 36.

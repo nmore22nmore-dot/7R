@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 final sb = Supabase.instance.client;
 
@@ -16,6 +17,33 @@ const panel = Color(0xFF11131B);
 const cyan = Color(0xFF00C8FF);
 const pink = Color(0xFFFF287A);
 const authRedirectUrl = 'n://auth-callback';
+
+Future<void> _registerPushToken() async {
+  final user = sb.auth.currentUser;
+  if (user == null) return;
+  try {
+    final messaging = FirebaseMessaging.instance;
+    final token = await messaging.getToken();
+    if (token == null || token.isEmpty) return;
+    await sb.from('push_tokens').upsert({
+      'user_id': user.id,
+      'token': token,
+      'platform': Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'other'),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id,token');
+    messaging.onTokenRefresh.listen((next) async {
+      if (next.isEmpty) return;
+      try {
+        await sb.from('push_tokens').upsert({
+          'user_id': user.id,
+          'token': next,
+          'platform': Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'other'),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'user_id,token');
+      } catch (_) {}
+    });
+  } catch (_) {}
+}
 
 String _mimeForExtension(String ext) {
   switch (ext.toLowerCase()) {
@@ -69,13 +97,15 @@ Future<String?> _signedPostUrl(String value) async {
 
 Future<List<Map<String, dynamic>>> loadPostsWithProfiles({required bool following}) async {
   final user = sb.auth.currentUser;
-  var query = sb.from('posts').select('*').eq('visibility', 'public');
+  var query = sb.from('posts').select('*');
   if (following) {
     if (user == null) return [];
     final follows = await sb.from('follows').select('following_id').eq('follower_id', user.id);
     final ids = List<Map<String, dynamic>>.from(follows).map((r) => r['following_id'].toString()).toList();
     if (ids.isEmpty) return [];
-    query = query.inFilter('user_id', ids);
+    query = query.inFilter('user_id', ids).inFilter('visibility', ['public', 'followers']);
+  } else {
+    query = query.eq('visibility', 'public');
   }
   final raw = await query.order('created_at', ascending: false).limit(50);
   final rows = List<Map<String, dynamic>>.from(raw);
@@ -123,6 +153,7 @@ class NApp extends StatelessWidget {
         colorScheme: scheme,
         useMaterial3: true,
         fontFamily: 'sans',
+        dividerColor: const Color(0xFF202833),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFF10131A),
@@ -199,9 +230,15 @@ class _AuthGateState extends State<AuthGate> {
         setState(() {
           passwordRecovery = data.event == AuthChangeEvent.passwordRecovery;
         });
+        if (data.session != null) {
+          _registerPushToken();
+        }
       },
       onError: (_) {},
     );
+    if (sb.auth.currentSession != null) {
+      _registerPushToken();
+    }
   }
 
   @override
@@ -324,6 +361,7 @@ class _AuthPageState extends State<AuthPage> {
   final email = TextEditingController();
   final pass = TextEditingController();
   final username = TextEditingController();
+  DateTime? birthDate;
 
   bool signup = false;
   bool busy = false;
@@ -382,11 +420,18 @@ class _AuthPageState extends State<AuthPage> {
         if (!RegExp(r'^[A-Za-z0-9_]+$').hasMatch(u)) {
           throw Exception('اسم المستخدم يقبل الحروف الإنجليزية والأرقام والشرطة السفلية فقط.');
         }
+        if (birthDate == null) {
+          throw Exception('اختر تاريخ الميلاد.');
+        }
+        final today = DateTime.now();
+        var age = today.year - birthDate!.year;
+        if (today.month < birthDate!.month || (today.month == birthDate!.month && today.day < birthDate!.day)) age--;
+        if (age < 13) throw Exception('يجب أن يكون عمرك 13 سنة أو أكثر.');
 
         final r = await sb.auth.signUp(
           email: e,
           password: p,
-          data: {'username': u},
+          data: {'username': u, 'birth_date': birthDate!.toIso8601String().substring(0,10)},
           emailRedirectTo: authRedirectUrl,
         );
 
@@ -549,6 +594,17 @@ class _AuthPageState extends State<AuthPage> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.cake_outlined),
+                                  title: Text(birthDate == null ? 'تاريخ الميلاد' : '${birthDate!.year}/${birthDate!.month.toString().padLeft(2,'0')}/${birthDate!.day.toString().padLeft(2,'0')}'),
+                                  subtitle: const Text('يُستخدم لتطبيق حد العمر 13+ و+21.'),
+                                  trailing: const Icon(Icons.calendar_month_outlined),
+                                  onTap: busy ? null : () async {
+                                    final picked = await showDatePicker(context: context, initialDate: DateTime(DateTime.now().year - 18), firstDate: DateTime(1900), lastDate: DateTime.now(), helpText: 'اختر تاريخ الميلاد');
+                                    if (picked != null) setState(() => birthDate = picked);
+                                  },
+                                ),
                               ],
                               TextField(
                                 controller: email,
@@ -701,44 +757,67 @@ class _ShellState extends State<Shell> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: bg,
         body: IndexedStack(index: index, children: pages),
-        bottomNavigationBar: Container(
-          height: 62,
-          decoration: const BoxDecoration(
-            color: Colors.black,
-            border: Border(top: BorderSide(color: Color(0xFF202020), width: .6)),
-          ),
-          child: SafeArea(
-            top: false,
+        bottomNavigationBar: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Container(
+            height: 66,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1017),
+              borderRadius: BorderRadius.circular(34),
+              border: Border.all(color: const Color(0xFF1E2730)),
+              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 18, offset: Offset(0, 8))],
+            ),
             child: Row(
               children: [
-                _navItem(0, Icons.home_outlined, Icons.home, 'الرئيسية'),
-                _navItem(1, Icons.people_outline, Icons.people, 'المتابعة'),
+                _navItem(0, Icons.home_outlined, Icons.home_rounded, 'الرئيسية'),
+                _navItem(1, Icons.people_outline_rounded, Icons.people_rounded, 'المتابعة'),
                 Expanded(
                   child: Center(
                     child: GestureDetector(
                       onTap: _openCreateMenu,
                       child: Container(
-                        width: 46, height: 30,
+                        width: 54, height: 38,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(7),
+                          borderRadius: BorderRadius.circular(11),
                           gradient: const LinearGradient(colors: [Color(0xFF25F4EE), Colors.white, Color(0xFFFF0050)]),
+                          boxShadow: const [BoxShadow(color: Color(0x5525F4EE), blurRadius: 12)],
                         ),
                         child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(5)),
-                          child: const Icon(Icons.add, color: Colors.black, size: 23),
+                          margin: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.add, color: Colors.black, size: 27),
                         ),
                       ),
                     ),
                   ),
                 ),
-                _navItem(3, Icons.chat_bubble_outline, Icons.chat_bubble, 'الرسائل'),
-                _navItem(4, Icons.person_outline, Icons.person, 'الملف'),
+                _navItem(3, Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 'الرسائل'),
+                _navItem(4, Icons.person_outline_rounded, Icons.person_rounded, 'الملف الشخصي'),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(int i, IconData normal, IconData active, String label) {
+    final selected = index == i;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () => setState(() => index = i),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(selected ? active : normal, color: selected ? cyan : Colors.white70, size: 22),
+            const SizedBox(height: 2),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: selected ? cyan : Colors.white70, fontSize: 8.5, fontWeight: selected ? FontWeight.w900 : FontWeight.w600)),
+          ],
         ),
       ),
     );
@@ -768,17 +847,6 @@ class _ShellState extends State<Shell> {
     ),
   );
 
-  Widget _navItem(int i, IconData normal, IconData active, String label) {
-    final selected = index == i;
-    return Expanded(child: InkWell(
-      onTap: () => setState(() => index = i),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(selected ? active : normal, color: selected ? Colors.white : Colors.white70, size: 23),
-        const SizedBox(height: 2), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 9, fontWeight: selected ? FontWeight.w800 : FontWeight.w500)),
-      ]),
-    ));
-  }
 }
 
 class SearchPage extends StatefulWidget {
@@ -831,8 +899,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override void initState(){super.initState(); load();}
   Future<void> load() async {
     try {
-      final data=await sb.from('posts').select().eq('user_id',widget.userId).eq('visibility','public').order('created_at',ascending:false);
+      final data=await sb.from('posts').select().eq('user_id',widget.userId).order('created_at',ascending:false);
       final me=sb.auth.currentUser;
+      if (me != null && me.id != widget.userId) {
+        try {
+          await sb.from('profile_views').upsert({'profile_id': widget.userId, 'viewer_id': me.id}, onConflict: 'profile_id,viewer_id');
+        } catch (_) {}
+      }
       final f=me==null?null:await sb.from('follows').select('following_id').eq('follower_id',me.id).eq('following_id',widget.userId).maybeSingle();
       if (mounted) {
         setState(() {
@@ -858,7 +931,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
     catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تحديث المتابعة: $e')));} finally{if(mounted)setState(()=>busy=false);}
   }
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('@${widget.username}')),body:Column(children:[
+  Future<void> blockUser() async {
+    final me=sb.auth.currentUser; if(me==null || me.id==widget.userId)return;
+    try {
+      await sb.from('blocked_users').upsert({'blocker_id':me.id,'blocked_id':widget.userId}, onConflict:'blocker_id,blocked_id');
+      if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم حظر الحساب.')));Navigator.pop(context);}
+    } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر حظر الحساب: $e')));}
+  }
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('@${widget.username}'),actions:[IconButton(onPressed:blockUser,icon:const Icon(Icons.block_outlined))]),body:Column(children:[
     const SizedBox(height:18), CircleAvatar(radius:44,child:Text(widget.username.isEmpty?'N':widget.username[0].toUpperCase(),style:const TextStyle(fontSize:28,fontWeight:FontWeight.bold))), const SizedBox(height:10),
     FilledButton(onPressed:busy?null:toggleFollow,child:Text(following?'إلغاء المتابعة':'متابعة')), const SizedBox(height:12),
     Expanded(child:GridView.builder(padding:const EdgeInsets.all(8),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4),itemCount:posts.length,itemBuilder:(_,i)=>FutureBuilder<String?>(
@@ -912,23 +992,29 @@ class _FeedPageState extends State<FeedPage> {
   }
 
   @override Widget build(BuildContext context) {
-    return Scaffold(backgroundColor: Colors.black, body: Stack(children: [
+    return Directionality(textDirection: TextDirection.rtl, child: Scaffold(backgroundColor: Colors.black, body: Stack(children: [
       loading ? const Center(child: CircularProgressIndicator(strokeWidth: 2)) : posts.isEmpty
         ? RefreshIndicator(onRefresh: load, child: ListView(physics: const AlwaysScrollableScrollPhysics(), children: const [SizedBox(height: 300), Center(child: Text('لا توجد فيديوهات بعد', style: TextStyle(color: Colors.white70))) ]))
         : RefreshIndicator(onRefresh: load, child: PageView.builder(scrollDirection: Axis.vertical, itemCount: posts.length,
             onPageChanged: (i) => setState(() => activeIndex = i), itemBuilder: (_, i) => VideoCard(post: posts[i], active: i == activeIndex))),
-      SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(10, 4, 10, 0), child: Row(children: [
-        IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage())), icon: const Icon(Icons.search, color: Colors.white)),
+      SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(10, 5, 10, 0), child: Row(children: [
+        _roundTopButton(Icons.search, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage()))),
         const Spacer(),
         GestureDetector(onTap: () => setState(() { followingTab = false; load(); }), child: _FeedTab(active: !followingTab, title: 'لك')),
-        const SizedBox(width: 24),
+        const SizedBox(width: 22),
         GestureDetector(onTap: () => setState(() { followingTab = true; load(); }), child: _FeedTab(active: followingTab, title: 'أتابع')),
         const Spacer(),
-        IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage())), icon: const Icon(Icons.inbox_outlined, color: Colors.white)),
+        _roundTopButton(Icons.chat_bubble_outline_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage()))),
       ]))),
-    ]));
+    ])));
   }
 }
+
+Widget _roundTopButton(IconData icon, VoidCallback onTap) => Material(
+  color: const Color(0xAA10141C),
+  shape: const CircleBorder(),
+  child: InkWell(onTap: onTap, customBorder: const CircleBorder(), child: Padding(padding: const EdgeInsets.all(9), child: Icon(icon, color: Colors.white, size: 19))),
+);
 
 class _FeedTab extends StatelessWidget {
   final bool active;
@@ -1032,7 +1118,7 @@ class _VideoCardState extends State<VideoCard> {
   }
 
   Widget _action(IconData icon, String text, VoidCallback onTap, {bool active=false}) => Padding(padding: const EdgeInsets.only(bottom: 15), child: Column(children: [
-    InkWell(onTap:onTap, child: Icon(icon, color: active ? const Color(0xFFFF2D55) : Colors.white, size: 34)),
+    InkWell(onTap:onTap, child: Icon(icon, color: active ? const Color(0xFFFF2D55) : Colors.white, size: 32)),
     const SizedBox(height: 2), Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, shadows:[Shadow(blurRadius:3,color:Colors.black)])),
   ]));
 
@@ -1199,136 +1285,60 @@ class LivePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rooms = const [
+      ['سجاد', '12.5K', Icons.person],
+      ['أحمد', '8.7K', Icons.person_outline],
+      ['نور', '11.2K', Icons.person_2_outlined],
+      ['فاطمة', '7.3K', Icons.face_3_outlined],
+      ['علي', '10.2K', Icons.person_rounded],
+    ];
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text(
-          'البث المباشر',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: const Text('البث المباشر', style: TextStyle(fontWeight: FontWeight.w900)),
         actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search),
-          ),
+          IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage())), icon: const Icon(Icons.search_rounded)),
+          IconButton(onPressed: () => showModalBottomSheet<void>(context: context, builder: (ctx) => SafeArea(child: Wrap(children: [ListTile(leading: const Icon(Icons.refresh), title: const Text('تحديث البثوث'), onTap: () => Navigator.pop(ctx)), ListTile(leading: const Icon(Icons.report_outlined), title: const Text('الإبلاغ عن بث'), onTap: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر البث الذي تريد الإبلاغ عنه.'))); }), ListTile(leading: const Icon(Icons.close), title: const Text('إغلاق'), onTap: () => Navigator.pop(ctx))]))), icon: const Icon(Icons.more_horiz_rounded)),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 110),
         children: [
           Container(
-            height: 180,
+            height: 190,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [Color(0xFF162733), Color(0xFF180B14)],
-              ),
-              border: Border.all(color: const Color(0xFF273541)),
+              gradient: const LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft, colors: [Color(0xFF132A35), Color(0xFF210A15)]),
+              border: Border.all(color: const Color(0xFF203A46)),
             ),
-            child: Stack(
-              children: [
-                const Center(
-                  child: Icon(
-                    Icons.sensors,
-                    color: cyan,
-                    size: 54,
-                  ),
-                ),
-                Positioned(
-                  top: 14,
-                  right: 14,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: pink,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      'LIVE',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ),
-                const Positioned(
-                  right: 16,
-                  bottom: 16,
-                  child: Text(
-                    'ابدأ بثك المباشر',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
+            child: Stack(children: [
+              const Positioned.fill(child: Center(child: Icon(Icons.sensors_rounded, size: 58, color: cyan))),
+              Positioned(top: 12, right: 12, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: pink, borderRadius: BorderRadius.circular(18)), child: const Text('مباشر الآن', style: TextStyle(fontWeight: FontWeight.w900)))),
+              const Positioned(bottom: 16, right: 16, left: 16, child: Text('اكتشف البثوث المباشرة الجديدة', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+            ]),
+          ),
+          const SizedBox(height: 18),
+          Row(children: [
+            const Text('البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const Spacer(),
+            Text('الكل', style: TextStyle(color: cyan, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 10),
+          ...rooms.map((r) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(color: const Color(0xFF0E1219), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1D2832))),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              leading: Stack(children: [CircleAvatar(radius: 27, backgroundColor: const Color(0xFF26313B), child: Icon(r[2] as IconData, color: Colors.white70)), Positioned(bottom: 0, right: 0, child: Container(width: 12, height: 12, decoration: BoxDecoration(color: pink, shape: BoxShape.circle, border: Border.all(color: bg, width: 2))))]),
+              title: Text('@${r[0]}', style: const TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: Text('في البث الآن • ${r[1]} مشاهد', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+              trailing: FilledButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LiveRoomPage(username: r[0] as String, viewers: r[1] as String))), style: FilledButton.styleFrom(backgroundColor: pink, minimumSize: const Size(72, 38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('مشاهدة', style: TextStyle(fontWeight: FontWeight.w800))),
             ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'بثوث مباشرة الآن',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 12),
-          ...List.generate(
-            4,
-            (i) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: panel,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFF202833)),
-              ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    radius: 25,
-                    backgroundColor: Color(0xFF202833),
-                    child: Icon(Icons.person),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '@N_user_${i + 1}\\nبث مباشر الآن',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const Icon(Icons.visibility_outlined, size: 18),
-                  const SizedBox(width: 4),
-                  Text('${(i + 1) * 1.2}K'),
-                ],
-              ),
-            ),
-          ),
+          )),
         ],
       ),
     );
   }
-}
-
-String _storageMessage(Object e) {
-  final raw = e.toString();
-  final lower = raw.toLowerCase();
-  if (lower.contains('row-level security') || lower.contains('not authorized') || lower.contains('permission')) {
-    return 'الرفع مرفوض من Supabase Storage. تحقق من bucket وسياسات Storage.';
-  }
-  if (lower.contains('bucket') && lower.contains('not found')) {
-    return 'مجلد post-media غير موجود في Supabase.';
-  }
-  if (lower.contains('network')) {
-    return 'تعذر الاتصال بالخادم.';
-  }
-  return raw.replaceFirst('Exception: ', '');
 }
 
 class PublishPage extends StatefulWidget {
@@ -1345,6 +1355,7 @@ class _PublishPageState extends State<PublishPage> {
   bool imageMode = false;
   bool busy = false;
   String visibility = 'public';
+  bool adultOnly = false;
   String? selectedMime;
 
   Future<void> pick(ImageSource src) async {
@@ -1408,6 +1419,7 @@ class _PublishPageState extends State<PublishPage> {
         'media_type': imageMode ? 'image' : 'video',
         'caption': caption.text.trim(),
         'visibility': visibility,
+        'adult_only': adultOnly,
       });
 
       if (mounted) {
@@ -1441,74 +1453,72 @@ class _PublishPageState extends State<PublishPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('نشر فيديو'),
+        title: const Text('نشر فيديو', style: TextStyle(fontWeight: FontWeight.w900)),
+        leading: IconButton(onPressed: () => Navigator.maybePop(context), icon: const Icon(Icons.arrow_back_rounded)),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            SegmentedButton<bool>(segments: const [ButtonSegment(value:false,label:Text('فيديو'),icon:Icon(Icons.videocam)), ButtonSegment(value:true,label:Text('صورة'),icon:Icon(Icons.image))], selected:{imageMode}, onSelectionChanged:(v)=>setState(()=>imageMode=v.first)),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      pick(ImageSource.camera);
-                    },
-                    icon: const Icon(Icons.camera_alt),
-                    label: Text(imageMode ? 'التقاط صورة' : 'تصوير فيديو'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      pick(ImageSource.gallery);
-                    },
-                    icon: const Icon(Icons.video_library),
-                    label: Text(imageMode ? 'اختيار صورة' : 'رفع فيديو'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: OutlinedButton.icon(onPressed: busy ? null : pickAnyFile, icon: const Icon(Icons.folder_open_outlined), label: const Text('من الملفات'))),
-              ],
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          Container(
+            height: 245,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F131B),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFF25313B)),
             ),
-            const SizedBox(height: 15),
-            if (file != null)
-              Text(
-                'تم اختيار: ${file!.name}',
-              ),
-            TextField(
-              controller: caption,
-              maxLines: 3,
-              decoration: const InputDecoration(labelText: 'الوصف'),
-            ),
-            const SizedBox(height: 12),
-            Align(alignment: Alignment.centerRight, child: Text('من يمكنه مشاهدة المنشور؟', style: Theme.of(context).textTheme.titleSmall)),
-            const SizedBox(height: 6),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'public', label: Text('الجميع'), icon: Icon(Icons.public, size: 18)),
-                ButtonSegment(value: 'followers', label: Text('المتابعون'), icon: Icon(Icons.people_outline, size: 18)),
-                ButtonSegment(value: 'private', label: Text('أنا فقط'), icon: Icon(Icons.lock_outline, size: 18)),
-              ],
-              selected: {visibility},
-              onSelectionChanged: (v) => setState(() => visibility = v.first),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: busy ? null : publish,
-                child: Text(
-                  busy ? 'جاري النشر...' : 'نشر',
-                ),
-              ),
-            ),
-          ],
-        ),
+            child: file == null
+              ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.video_library_outlined, size: 52, color: cyan),
+                  const SizedBox(height: 12),
+                  const Text('أضف فيديو أو صورة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  const Text('اختر من الكاميرا أو المعرض أو الملفات', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  const SizedBox(height: 18),
+                  OutlinedButton.icon(onPressed: busy ? null : pickAnyFile, icon: const Icon(Icons.folder_open_outlined), label: const Text('اختيار ملف')),
+                ])
+              : Center(child: Padding(padding: const EdgeInsets.all(18), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.check_circle_rounded, color: cyan, size: 48),
+                  const SizedBox(height: 10),
+                  Text(file!.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Text(selectedMime ?? '', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                ]))),
+          ),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: OutlinedButton.icon(onPressed: busy ? null : () => pick(ImageSource.camera), icon: const Icon(Icons.camera_alt_outlined), label: Text(imageMode ? 'صورة' : 'فيديو'))),
+            const SizedBox(width: 8),
+            Expanded(child: OutlinedButton.icon(onPressed: busy ? null : () => pick(ImageSource.gallery), icon: const Icon(Icons.photo_library_outlined), label: const Text('المعرض'))),
+          ]),
+          const SizedBox(height: 14),
+          TextField(controller: caption, maxLines: 4, decoration: const InputDecoration(hintText: 'اكتب وصفًا للفيديو...', prefixIcon: Icon(Icons.edit_outlined))),
+          const SizedBox(height: 14),
+          const Text('من يمكنه مشاهدة المنشور؟', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'public', label: Text('الجميع'), icon: Icon(Icons.public, size: 17)),
+              ButtonSegment(value: 'followers', label: Text('المتابعون'), icon: Icon(Icons.people_outline, size: 17)),
+              ButtonSegment(value: 'private', label: Text('أنا فقط'), icon: Icon(Icons.lock_outline, size: 17)),
+            ], selected: {visibility}, onSelectionChanged: (v) => setState(() => visibility = v.first),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: adultOnly,
+            onChanged: busy ? null : (v) => setState(() => adultOnly = v),
+            title: const Text('محتوى +21', style: TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: const Text('سيظهر فقط للحسابات التي عمر صاحبها 21 سنة أو أكثر.'),
+            secondary: const Icon(Icons.eighteen_up_rating_outlined),
+          ),
+          const SizedBox(height: 22),
+          SizedBox(height: 52, child: FilledButton(
+            onPressed: busy || file == null ? null : publish,
+            style: FilledButton.styleFrom(backgroundColor: pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+            child: Text(busy ? 'جاري النشر...' : 'نشر', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+          )),
+        ],
       ),
     );
   }
@@ -1549,45 +1559,37 @@ class _MessagesPageState extends State<MessagesPage> {
             ascending: false,
           );
 
-      if (mounted) {
-        setState(() {
-          rows = List<Map<String, dynamic>>.from(x);
-        });
+      final rawRows = List<Map<String, dynamic>>.from(x);
+      final ids = <String>{};
+      for (final row in rawRows) {
+        final other = row['user_a'].toString() == user.id ? row['user_b'].toString() : row['user_a'].toString();
+        ids.add(other);
       }
+      final profiles = ids.isEmpty ? <dynamic>[] : await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids.toList());
+      final byId = <String, Map<String,dynamic>>{for (final p in List<Map<String,dynamic>>.from(profiles)) p['id'].toString(): p};
+      for (final row in rawRows) {
+        final other = row['user_a'].toString() == user.id ? row['user_b'].toString() : row['user_a'].toString();
+        final profile = byId[other];
+        row['_other_username'] = profile?['username'] ?? 'مستخدم';
+        row['_other_avatar'] = profile?['avatar_url'];
+      }
+      if (mounted) setState(() => rows = rawRows);
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الرسائل', style: TextStyle(fontWeight: FontWeight.w900)),
-      ),
-      body: rows.isEmpty
-          ? const Center(
-              child: Text('لا توجد محادثات بعد'),
-            )
-          : ListView(
-              children: rows.map((e) {
-                return ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.person),
-                  ),
-                  title: Text(
-                    e['title'] ?? 'محادثة',
-                  ),
-                  subtitle: Text(
-                    e['last_message'] ?? '',
-                  ),
-                  onTap: () {
-                    ChatPage.open(
-                      context,
-                      e['id'],
-                    );
-                  },
-                );
-              }).toList(),
-            ),
+      backgroundColor: bg,
+      appBar: AppBar(title: const Text('الرسائل', style: TextStyle(fontWeight: FontWeight.w900)), actions: [IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))]),
+      body: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(14, 4, 14, 8), child: TextField(decoration: const InputDecoration(hintText: 'ابحث في الرسائل...', prefixIcon: Icon(Icons.search), isDense: true))),
+        if (rows.isEmpty) const Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.chat_bubble_outline_rounded, size: 54, color: Colors.white38), SizedBox(height: 12), Text('لا توجد محادثات بعد', style: TextStyle(color: Colors.white70))])))
+        else Expanded(child: ListView.separated(padding: const EdgeInsets.fromLTRB(10, 4, 10, 110), itemCount: rows.length, separatorBuilder: (_,__) => const Divider(height: 1, indent: 74), itemBuilder: (_, i) {
+          final e = rows[i];
+          return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), leading: CircleAvatar(radius: 25, backgroundColor: const Color(0xFF1B252D), backgroundImage: (e['_other_avatar'] ?? '').toString().isNotEmpty ? NetworkImage(e['_other_avatar'].toString()) : null, child: (e['_other_avatar'] ?? '').toString().isEmpty ? const Icon(Icons.person_outline_rounded) : null), title: Text(e['_other_username'] ?? e['title'] ?? 'محادثة', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(e['last_message'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white60)), trailing: const Icon(Icons.chevron_left_rounded, color: Colors.white38), onTap: () => ChatPage.open(context, e['id']));
+        }))
+      ]),
     );
   }
 }
@@ -1880,6 +1882,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic>? p;
   List<Map<String, dynamic>> myPosts = [];
+  List<Map<String, dynamic>> likedPosts = [];
   bool loading = true;
   int tab = 0;
 
@@ -1897,12 +1900,18 @@ class _ProfilePageState extends State<ProfilePage> {
         sb.from('follows').select('following_id').eq('follower_id', user.id),
         sb.from('post_likes').select('post_id').eq('user_id', user.id),
       ]);
+      final likedIds = List<Map<String,dynamic>>.from(results[4] as List).map((r)=>r['post_id']).toList();
+      List<Map<String,dynamic>> liked = [];
+      if (likedIds.isNotEmpty) {
+        final lp = await sb.from('posts').select().inFilter('id', likedIds).order('created_at', ascending:false);
+        liked = List<Map<String,dynamic>>.from(lp);
+      }
       if (!mounted) return;
       final profile = Map<String, dynamic>.from((results[0] as Map?) ?? {});
       profile['followers_count'] = (results[2] as List).length;
       profile['following_count'] = (results[3] as List).length;
       profile['likes_count'] = (results[4] as List).length;
-      setState(() { p = profile; myPosts = List<Map<String, dynamic>>.from(results[1] as List); loading = false; });
+      setState(() { p = profile; myPosts = List<Map<String, dynamic>>.from(results[1] as List); likedPosts = liked; loading = false; });
     } catch (_) {
       if (mounted) setState(() => loading = false);
     }
@@ -1972,7 +1981,7 @@ class _ProfilePageState extends State<ProfilePage> {
           Padding(padding: const EdgeInsets.symmetric(horizontal: 28), child: Row(children: [
             Expanded(child: OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('تعديل الملف'))),
             const SizedBox(width: 8),
-            Expanded(child: OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.share_outlined, size: 18), label: const Text('مشاركة'))),
+            Expanded(child: OutlinedButton.icon(onPressed: () async { final u = sb.auth.currentUser; final text = 'تابعني على N: @$username'; try { await Share.share(text, subject: 'ملف @$username'); } catch (_) {} }, icon: const Icon(Icons.share_outlined, size: 18), label: const Text('مشاركة'))),
           ])),
           const SizedBox(height: 18),
           SizedBox(height: 48, child: Row(children: [
@@ -1981,7 +1990,7 @@ class _ProfilePageState extends State<ProfilePage> {
             _profileTab(2, Icons.favorite_border, 'الإعجابات'),
           ])),
           const Divider(height: 1),
-          if (tab == 0) _postGrid(myPosts) else const SizedBox(height: 260, child: Center(child: Text('لا يوجد محتوى في هذا القسم'))),
+          if (tab == 0) _postGrid(myPosts) else if (tab == 1) _postGrid(myPosts.where((x)=>(x['visibility'] ?? 'public') != 'public').toList()) else _postGrid(likedPosts),
           const SizedBox(height: 100),
         ]),
       ),
@@ -2005,10 +2014,10 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('الإعدادات والخصوصية'), leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back))),
-      body: ListView(padding: const EdgeInsets.only(bottom: 30), children: [
+      body: ListView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 30), children: [
         _section('الحساب'),
-        _item(context, Icons.person_outline, 'الحساب', 'إدارة معلومات حساب N', () {}),
-        _item(context, Icons.security_outlined, 'الأمان', 'كلمة المرور وأمان الحساب', () {}),
+        _item(context, Icons.person_outline, 'الحساب', 'إدارة معلومات حساب N', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountPage()))),
+        _item(context, Icons.security_outlined, 'الأمان', 'كلمة المرور وأمان الحساب', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SecurityPage()))),
         _item(context, Icons.qr_code_2, 'رمز QR الخاص بي', 'شارك ملفك بسرعة', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const QrPage()))),
         _section('المحتوى والنشاط'),
         _item(context, Icons.history, 'مركز النشاط', 'سجل تفاعلاتك ونشاطك', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActivityPage()))),
@@ -2022,60 +2031,89 @@ class SettingsPage extends StatelessWidget {
         _section('الخصوصية'),
         _item(context, Icons.lock_outline, 'الخصوصية', 'الحساب الخاص والتحكم بالمحتوى', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPage()))),
         _section('N'),
-        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.0.1', () {}),
+        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.1.0', () => showAboutDialog(context: context, applicationName: 'N', applicationVersion: '5.1.0', applicationLegalese: 'N Social Platform')), 
         ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)), onTap: () async { await sb.auth.signOut(); if (context.mounted) Navigator.popUntil(context, (r) => r.isFirst); }),
       ]),
     );
   }
 
-  Widget _section(String title) => Padding(padding: const EdgeInsets.fromLTRB(18, 20, 18, 7), child: Text(title, style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w800)));
-  Widget _item(BuildContext context, IconData icon, String title, String sub, VoidCallback tap) => ListTile(onTap: tap, leading: Icon(icon, size: 23), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(sub, style: const TextStyle(fontSize: 11, color: Colors.white54)), trailing: const Icon(Icons.chevron_left, color: Colors.white38));
+  Widget _section(String title) => Padding(padding: const EdgeInsets.fromLTRB(8, 20, 8, 7), child: Text(title, style: const TextStyle(color: cyan, fontSize: 12, fontWeight: FontWeight.w900)));
+  Widget _item(BuildContext context, IconData icon, String title, String sub, VoidCallback tap) => Container(margin: const EdgeInsets.only(bottom: 6), decoration: BoxDecoration(color: const Color(0xFF0F131A), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF1E2730))), child: ListTile(onTap: tap, leading: Icon(icon, size: 22), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(sub, style: const TextStyle(fontSize: 10.5, color: Colors.white54)), trailing: const Icon(Icons.chevron_left_rounded, color: Colors.white38)));
+}
+
+class LiveRoomPage extends StatefulWidget {
+  final String username;
+  final String viewers;
+  const LiveRoomPage({super.key, required this.username, required this.viewers});
+  @override State<LiveRoomPage> createState() => _LiveRoomPageState();
+}
+class _LiveRoomPageState extends State<LiveRoomPage> {
+  final ctrl = TextEditingController();
+  final comments = <String>[];
+  @override void dispose(){ ctrl.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:Text('@${widget.username} • مباشر')),body:Stack(children:[
+    const Positioned.fill(child: DecoratedBox(decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF122530),Colors.black]))))),
+    Positioned(top:18,right:14,child:Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:6),decoration:BoxDecoration(color:pink,borderRadius:BorderRadius.circular(18)),child:Text('${widget.viewers} مشاهد'))),
+    const Center(child:Icon(Icons.sensors_rounded,size:92,color:cyan)),
+    Positioned(left:14,right:14,bottom:82,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:comments.take(6).map((e)=>Padding(padding:const EdgeInsets.only(bottom:5),child:Text(e,style:const TextStyle(fontWeight:FontWeight.w700,shadows:[Shadow(blurRadius:4,color:Colors.black)])))).toList())),
+    Positioned(left:10,right:10,bottom:10,child:Row(children:[Expanded(child:TextField(controller:ctrl,decoration:const InputDecoration(hintText:'اكتب تعليقًا...',filled:true,fillColor:Color(0xAA151922)))),const SizedBox(width:6),IconButton(onPressed:(){final t=ctrl.text.trim();if(t.isEmpty)return;setState(()=>comments.add('@أنا: $t'));ctrl.clear();},icon:const Icon(Icons.send,color:cyan))]))
+  ]));
+}
+
+class AccountPage extends StatelessWidget {
+  const AccountPage({super.key});
+  @override Widget build(BuildContext context){ final u=sb.auth.currentUser; return Scaffold(appBar:AppBar(title:const Text('الحساب')),body:ListView(padding:const EdgeInsets.all(14),children:[
+    ListTile(leading:const Icon(Icons.email_outlined),title:const Text('البريد الإلكتروني'),subtitle:Text(u?.email ?? 'غير متوفر')),
+    ListTile(leading:const Icon(Icons.verified_user_outlined),title:const Text('حالة تسجيل الدخول'),subtitle:Text(u==null?'غير مسجل':'مسجل الدخول')),
+    ListTile(leading:const Icon(Icons.password_outlined),title:const Text('تغيير كلمة المرور'),trailing:const Icon(Icons.chevron_left),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const SecurityPage()))),
+  ]); }
+}
+
+class SecurityPage extends StatefulWidget { const SecurityPage({super.key}); @override State<SecurityPage> createState()=>_SecurityPageState(); }
+class _SecurityPageState extends State<SecurityPage>{
+  final p=TextEditingController(); final c=TextEditingController(); bool busy=false; bool obscure=true;
+  @override void dispose(){p.dispose();c.dispose();super.dispose();}
+  Future<void> save() async { if(p.text.length<6||p.text!=c.text){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('كلمتا المرور غير متطابقتين أو أقصر من 6 أحرف.')));return;} setState(()=>busy=true); try{await sb.auth.updateUser(UserAttributes(password:p.text));if(mounted){p.clear();c.clear();ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تغيير كلمة المرور.')));}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تغيير كلمة المرور: $e')));}finally{if(mounted)setState(()=>busy=false);}}
+  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('الأمان')),body:ListView(padding:const EdgeInsets.all(16),children:[const ListTile(leading:Icon(Icons.shield_outlined),title:Text('حماية الحساب'),subtitle:Text('غيّر كلمة المرور بشكل دوري ولا تشاركها مع أي شخص.')),TextField(controller:p,obscureText:obscure,decoration:InputDecoration(labelText:'كلمة المرور الجديدة',suffixIcon:IconButton(onPressed:()=>setState(()=>obscure=!obscure),icon:Icon(obscure?Icons.visibility:Icons.visibility_off)))),const SizedBox(height:12),TextField(controller:c,obscureText:obscure,decoration:const InputDecoration(labelText:'تأكيد كلمة المرور')),const SizedBox(height:18),FilledButton(onPressed:busy?null:save,child:Text(busy?'جاري الحفظ...':'حفظ كلمة المرور'))]));
 }
 
 class SimpleNPage extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final String message;
-
-  const SimpleNPage({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 60, color: cyan),
-              const SizedBox(height: 18),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16, color: Colors.white70),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  final String title; final IconData icon; final String message;
+  const SimpleNPage({super.key,required this.title,required this.icon,required this.message});
+  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:bg,appBar:AppBar(title:Text(title,style:const TextStyle(fontWeight:FontWeight.w900)),leading:IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(Icons.arrow_back_rounded))),body:Center(child:Padding(padding:const EdgeInsets.all(28),child:Column(mainAxisSize:MainAxisSize.min,children:[Container(width:92,height:92,decoration:BoxDecoration(shape:BoxShape.circle,color:const Color(0xFF101923),border:Border.all(color:const Color(0xFF23323D))),child:Icon(icon,size:44,color:cyan)),const SizedBox(height:18),Text(message,textAlign:TextAlign.center,style:const TextStyle(fontSize:16,color:Colors.white70,height:1.5))]))));
 }
-class QrPage extends StatelessWidget { const QrPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'رمز QR',icon:Icons.qr_code_2,message:'رمز N الخاص بك جاهز للمشاركة.'); }
-class ActivityPage extends StatelessWidget { const ActivityPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'مركز النشاط',icon:Icons.history,message:'هنا يظهر سجل نشاطك وتفاعلاتك في N.'); }
-class VisitorsPage extends StatelessWidget { const VisitorsPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'زيارات الملف الشخصي',icon:Icons.visibility_outlined,message:'ستظهر هنا الحسابات التي زارت ملفك عند تفعيل الميزة.'); }
-class BlockedPage extends StatelessWidget { const BlockedPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الحسابات المحظورة',icon:Icons.block_outlined,message:'لا توجد حسابات محظورة حاليًا.'); }
-class OfflinePage extends StatelessWidget { const OfflinePage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'فيديوهات بدون اتصال',icon:Icons.download_outlined,message:'الفيديوهات المحفوظة للمشاهدة دون اتصال ستظهر هنا.'); }
-class StudioPage extends StatelessWidget { const StudioPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'N Studio',icon:Icons.auto_awesome,message:'أدوات N لإنشاء الفيديوهات وإدارة المحتوى.'); }
-class WalletPage extends StatelessWidget { const WalletPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الرصيد والهدايا',icon:Icons.account_balance_wallet_outlined,message:'الرصيد والهدايا والمعاملات تظهر هنا عند ربط بوابة الدفع.'); }
-class NotificationsPage extends StatelessWidget { const NotificationsPage({super.key}); @override Widget build(BuildContext c)=>const SimpleNPage(title:'الإشعارات',icon:Icons.notifications_none,message:'ستظهر هنا المتابعات والإعجابات والتعليقات والرسائل.'); }
+
+class QrPage extends StatelessWidget {
+  const QrPage({super.key});
+  @override Widget build(BuildContext c){final u=sb.auth.currentUser; final data='n://profile/${u?.id ?? 'guest'}';return Scaffold(backgroundColor:bg,appBar:AppBar(title:const Text('رمز QR',style:TextStyle(fontWeight:FontWeight.w900))),body:Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Container(width:250,height:250,padding:const EdgeInsets.all(20),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(24)),child:CustomPaint(painter:_QrPainter(data),size:const Size(210,210))),const SizedBox(height:18),Text(data,style:const TextStyle(color:Colors.white60,fontSize:11)),const SizedBox(height:10),FilledButton.icon(onPressed:()async{try{await Share.share(data,subject:'ملفي على N');}catch(_){ }},icon:const Icon(Icons.share),label:const Text('مشاركة الرمز'))]));}
+}
+class _QrPainter extends CustomPainter {
+  final String data; _QrPainter(this.data);
+  @override void paint(Canvas canvas,Size size){final p=Paint()..color=Colors.black; final n=29; final cell=size.width/n; final seed=data.codeUnits.fold<int>(17,(a,b)=>(a*31+b)&0x7fffffff); bool bit(int x,int y)=>((x*73856093+y*19349663+seed)&1)==0; void finder(int ox,int oy){canvas.drawRect(Rect.fromLTWH(ox*cell,oy*cell,7*cell,7*cell),p);p.color=Colors.white;canvas.drawRect(Rect.fromLTWH((ox+1)*cell,(oy+1)*cell,5*cell,5*cell),p);p.color=Colors.black;canvas.drawRect(Rect.fromLTWH((ox+2)*cell,(oy+2)*cell,3*cell,3*cell),p);}for(var y=0;y<n;y++){for(var x=0;x<n;x++){if((x<7&&y<7)||(x>=n-7&&y<7)||(x<7&&y>=n-7))continue;if(bit(x,y))canvas.drawRect(Rect.fromLTWH(x*cell,y*cell,cell+.2,cell+.2),p);}}finder(0,0);finder(n-7,0);finder(0,n-7);}
+  @override bool shouldRepaint(covariant _QrPainter old)=>old.data!=data;
+}
+
+class ActivityPage extends StatefulWidget { const ActivityPage({super.key}); @override State<ActivityPage> createState()=>_ActivityPageState(); }
+class _ActivityPageState extends State<ActivityPage>{bool loading=true;List<Map<String,dynamic>> items=[];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('notifications').select('id,type,created_at,read,actor_id,post_id').eq('user_id',u.id).order('created_at',ascending:false).limit(100);if(mounted)setState(()=>items=List<Map<String,dynamic>>.from(r));}catch(_){ }finally{if(mounted)setState(()=>loading=false);}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('مركز النشاط')),body:loading?const Center(child:CircularProgressIndicator()):items.isEmpty?const Center(child:Text('لا يوجد نشاط بعد')):ListView.separated(itemCount:items.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,i){final e=items[i];return ListTile(leading:Icon(_notificationIcon(e['type']),color:e['read']==true?Colors.white54:cyan),title:Text(_notificationText(e['type'])),subtitle:Text((e['created_at']??'').toString()),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const NotificationsPage())));}});}
+IconData _notificationIcon(dynamic t)=>t=='like'?Icons.favorite:t=='comment'?Icons.chat_bubble_outline:t=='follow'?Icons.person_add_alt_1:Icons.card_giftcard;
+String _notificationText(dynamic t)=>t=='like'?'إعجاب بمحتواك':t=='comment'?'تعليق على منشورك':t=='follow'?'بدأ متابعتك':'أرسل لك هدية';
+
+class VisitorsPage extends StatefulWidget { const VisitorsPage({super.key}); @override State<VisitorsPage> createState()=>_VisitorsPageState(); }
+class _VisitorsPageState extends State<VisitorsPage>{List<Map<String,dynamic>> rows=[];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('profile_views').select('viewer_id,created_at').eq('profile_id',u.id).order('created_at',ascending:false).limit(100);if(mounted)setState(()=>rows=List<Map<String,dynamic>>.from(r));}catch(_){}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('زيارات الملف الشخصي')),body:rows.isEmpty?const Center(child:Text('لا توجد زيارات مسجلة بعد')):ListView.builder(itemCount:rows.length,itemBuilder:(_,i)=>ListTile(leading:const CircleAvatar(child:Icon(Icons.person)),title:Text('@${rows[i]['viewer_id']}'),subtitle:Text((rows[i]['created_at']??'').toString()))));}
+
+class BlockedPage extends StatefulWidget { const BlockedPage({super.key}); @override State<BlockedPage> createState()=>_BlockedPageState(); }
+class _BlockedPageState extends State<BlockedPage>{List<Map<String,dynamic>> rows=[];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('blocked_users').select('blocked_id,created_at').eq('blocker_id',u.id).order('created_at',ascending:false);if(mounted)setState(()=>rows=List<Map<String,dynamic>>.from(r));}catch(_){}}Future<void>remove(String id)async{try{await sb.from('blocked_users').delete().eq('blocker_id',sb.auth.currentUser!.id).eq('blocked_id',id);load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إلغاء الحظر: $e')));}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('الحسابات المحظورة')),body:rows.isEmpty?const Center(child:Text('لا توجد حسابات محظورة')):ListView.builder(itemCount:rows.length,itemBuilder:(_,i)=>ListTile(leading:const CircleAvatar(child:Icon(Icons.block)),title:Text(rows[i]['blocked_id'].toString()),trailing:TextButton(onPressed:()=>remove(rows[i]['blocked_id'].toString()),child:const Text('إلغاء الحظر')))));}
+
+class OfflinePage extends StatelessWidget { const OfflinePage({super.key}); @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('المحتوى المحفوظ')),body:Center(child:Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.download_done_rounded,size:70,color:cyan),const SizedBox(height:14),const Text('المشاهدة دون اتصال تحتاج صلاحية التخزين المحلي في الجهاز.'),const SizedBox(height:12),FilledButton(onPressed:()=>Navigator.pop(c),child:const Text('رجوع'))])); }
+class StudioPage extends StatelessWidget { const StudioPage({super.key}); @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('N Studio')),body:ListView(padding:const EdgeInsets.all(14),children:[ListTile(leading:const Icon(Icons.video_library,color:cyan),title:const Text('إنشاء منشور'),subtitle:const Text('اختيار فيديو أو صورة ونشرها'),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const PublishPage()))),ListTile(leading:const Icon(Icons.sensors,color:pink),title:const Text('بدء بث مباشر'),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const LivePage()))),ListTile(leading:const Icon(Icons.auto_awesome,color:cyan),title:const Text('N AI'),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const AiPage()))) ])); }
+
+class WalletPage extends StatefulWidget { const WalletPage({super.key}); @override State<WalletPage> createState()=>_WalletPageState(); }
+class _WalletPageState extends State<WalletPage>{int balance=0;int selected=0;final gifts=const [['وردة',10,Icons.local_florist],['قلب',50,Icons.favorite],['أسد',500,Icons.pets],['سيارة',1000,Icons.directions_car],['يخت',5000,Icons.directions_boat],['قصر',10000,Icons.castle],['طائر النور',20000,Icons.flutter_dash],['نجمة',50000,Icons.auto_awesome],['ختمة',100000,Icons.star_border]];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('user_coins').select('balance').eq('user_id',u.id).maybeSingle();if(mounted)setState(()=>balance=(r?['balance']??0) as int);}catch(_){}}Future<void>sendGift()async{final u=sb.auth.currentUser;if(u==null)return;final g=gifts[selected];final other=await showDialog<String>(context:context,builder:(ctx){final x=TextEditingController();return AlertDialog(title:const Text('إرسال هدية'),content:TextField(controller:x,decoration:const InputDecoration(labelText:'معرّف المستلم (UUID)')),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('إلغاء')),FilledButton(onPressed:()=>Navigator.pop(ctx,x.text.trim()),child:const Text('إرسال'))]);});if(other==null||other.isEmpty)return;try{await sb.rpc('send_gift',params:{'p_receiver':other,'p_name':g[0],'p_cost':g[1]});await load();if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تم إرسال ${g[0]} بنجاح')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إرسال الهدية: $e')));}}@override Widget build(BuildContext c)=>Scaffold(backgroundColor:bg,appBar:AppBar(title:const Text('المتجر والهدايا',style:TextStyle(fontWeight:FontWeight.w900)),actions:[Padding(padding:const EdgeInsets.only(left:12),child:Center(child:Text('🪙 $balance',style:const TextStyle(fontWeight:FontWeight.w900))))]),body:ListView(padding:const EdgeInsets.fromLTRB(12,8,12,30),children:[Row(children:[Expanded(child:FilledButton(onPressed:()=>setState(()=>selected=selected),style:FilledButton.styleFrom(backgroundColor:const Color(0xFF171D25)),child:const Text('الهدايا'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:(){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('شراء العملات يحتاج بوابة دفع مرتبطة بحسابك.')));},child:const Text('المتجر')))]),const SizedBox(height:14),GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:gifts.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:8,mainAxisSpacing:8,childAspectRatio:.86),itemBuilder:(_,i){final g=gifts[i];final on=i==selected;return InkWell(onTap:()=>setState(()=>selected=i),borderRadius:BorderRadius.circular(16),child:Container(decoration:BoxDecoration(color:const Color(0xFF0E131A),borderRadius:BorderRadius.circular(16),border:Border.all(color:on?pink:const Color(0xFF202B35),width:on?1.6:1)),child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(g[2] as IconData,size:42,color:i%2==0?pink:cyan),const SizedBox(height:7),Text(g[0] as String,style:const TextStyle(fontWeight:FontWeight.w800)),const SizedBox(height:4),Text('🪙 ${g[1]}',style:const TextStyle(color:Colors.white70,fontSize:11))])));}),const SizedBox(height:18),SizedBox(height:52,child:FilledButton(onPressed:sendGift,style:FilledButton.styleFrom(backgroundColor:pink,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(15))),child:const Text('إرسال هدية',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))))]));}
+}
+
+class NotificationsPage extends StatefulWidget { const NotificationsPage({super.key}); @override State<NotificationsPage> createState()=>_NotificationsPageState(); }
+class _NotificationsPageState extends State<NotificationsPage>{List<Map<String,dynamic>> rows=[];bool loading=true;@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('notifications').select('id,type,created_at,read,actor_id,post_id').eq('user_id',u.id).order('created_at',ascending:false).limit(100);if(mounted)setState(()=>rows=List<Map<String,dynamic>>.from(r));}catch(_){ }finally{if(mounted)setState(()=>loading=false);}}Future<void>markAll()async{try{final u=sb.auth.currentUser;if(u==null)return;await sb.from('notifications').update({'read':true}).eq('user_id',u.id).eq('read',false);await load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تحديث الإشعارات: $e')));}}@override Widget build(BuildContext context)=>Scaffold(backgroundColor:bg,appBar:AppBar(title:const Text('الإشعارات',style:TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:markAll,icon:const Icon(Icons.done_all_rounded))]),body:loading?const Center(child:CircularProgressIndicator()):rows.isEmpty?const Center(child:Text('لا توجد إشعارات بعد')):ListView.separated(padding:const EdgeInsets.fromLTRB(10,8,10,30),itemCount:rows.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,i){final e=rows[i];return ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:8,vertical:4),leading:Icon(_notificationIcon(e['type']),color:e['read']==true?Colors.white54:cyan),title:Text(_notificationText(e['type']),style:TextStyle(fontWeight:e['read']==true?FontWeight.w500:FontWeight.w900)),subtitle:Text((e['created_at']??'').toString()),onTap:()async{if(e['read']!=true){await sb.from('notifications').update({'read':true}).eq('id',e['id']);load();}});}});}
+
 class PrivacyPage extends StatefulWidget {
   const PrivacyPage({super.key});
 
