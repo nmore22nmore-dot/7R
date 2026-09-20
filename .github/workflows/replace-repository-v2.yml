@@ -54,7 +54,20 @@ jobs:
 
           echo "Project source: $SOURCE_DIR"
 
-          # Remove the old repository contents while preserving GitHub Actions.
+          # IMPORTANT:
+          # GitHub Apps without "workflows" permission cannot create/update
+          # files under .github/workflows/.
+          #
+          # Remove workflow files from the extracted project before copying.
+          if [ -d "$SOURCE_DIR/.github/workflows" ]; then
+            echo "Removing workflow files from ZIP source to avoid GitHub workflow permission error."
+            rm -rf "$SOURCE_DIR/.github/workflows"
+          fi
+
+          # Remove the old repository contents while preserving:
+          # - .git
+          # - .github
+          # - the uploaded ZIP
           find . -mindepth 1 -maxdepth 1 \
             ! -name ".git" \
             ! -name ".github" \
