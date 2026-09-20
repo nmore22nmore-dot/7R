@@ -74,6 +74,12 @@ String _mimeForExtension(String ext) {
 }
 
 
+String _storageMessage(Object error) {
+  if (error is StorageException) return error.message;
+  final text = error.toString();
+  return text.startsWith('Exception: ') ? text.substring(11) : text;
+}
+
 String _storagePath(String value, String bucket) {
   if (value.startsWith('http')) {
     final marker = '/storage/v1/object/public/$bucket/';
@@ -2052,7 +2058,7 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
   final comments = <String>[];
   @override void dispose(){ ctrl.dispose(); super.dispose(); }
   @override Widget build(BuildContext context)=>Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:Text('@${widget.username} • مباشر')),body:Stack(children:[
-    const Positioned.fill(child: DecoratedBox(decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF122530),Colors.black]))))),
+    const Positioned.fill(child: DecoratedBox(decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF122530),Colors.black])))),
     Positioned(top:18,right:14,child:Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:6),decoration:BoxDecoration(color:pink,borderRadius:BorderRadius.circular(18)),child:Text('${widget.viewers} مشاهد'))),
     const Center(child:Icon(Icons.sensors_rounded,size:92,color:cyan)),
     Positioned(left:14,right:14,bottom:82,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:comments.take(6).map((e)=>Padding(padding:const EdgeInsets.only(bottom:5),child:Text(e,style:const TextStyle(fontWeight:FontWeight.w700,shadows:[Shadow(blurRadius:4,color:Colors.black)])))).toList())),
