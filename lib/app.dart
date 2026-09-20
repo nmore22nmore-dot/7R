@@ -2068,57 +2068,736 @@ class _LiveRoomPageState extends State<LiveRoomPage> {
 
 class AccountPage extends StatelessWidget {
   const AccountPage({super.key});
-  @override Widget build(BuildContext context){ final u=sb.auth.currentUser; return Scaffold(appBar:AppBar(title:const Text('الحساب')),body:ListView(padding:const EdgeInsets.all(14),children:[
-    ListTile(leading:const Icon(Icons.email_outlined),title:const Text('البريد الإلكتروني'),subtitle:Text(u?.email ?? 'غير متوفر')),
-    ListTile(leading:const Icon(Icons.verified_user_outlined),title:const Text('حالة تسجيل الدخول'),subtitle:Text(u==null?'غير مسجل':'مسجل الدخول')),
-    ListTile(leading:const Icon(Icons.password_outlined),title:const Text('تغيير كلمة المرور'),trailing:const Icon(Icons.chevron_left),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const SecurityPage()))),
-  ]); }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = sb.auth.currentUser;
+    return Scaffold(
+      appBar: AppBar(title: const Text('الحساب')),
+      body: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.email_outlined),
+            title: const Text('البريد الإلكتروني'),
+            subtitle: Text(u?.email ?? 'غير متوفر'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.verified_user_outlined),
+            title: const Text('حالة تسجيل الدخول'),
+            subtitle: Text(u == null ? 'غير مسجل' : 'مسجل الدخول'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.password_outlined),
+            title: const Text('تغيير كلمة المرور'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SecurityPage()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class SecurityPage extends StatefulWidget { const SecurityPage({super.key}); @override State<SecurityPage> createState()=>_SecurityPageState(); }
-class _SecurityPageState extends State<SecurityPage>{
-  final p=TextEditingController(); final c=TextEditingController(); bool busy=false; bool obscure=true;
-  @override void dispose(){p.dispose();c.dispose();super.dispose();}
-  Future<void> save() async { if(p.text.length<6||p.text!=c.text){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('كلمتا المرور غير متطابقتين أو أقصر من 6 أحرف.')));return;} setState(()=>busy=true); try{await sb.auth.updateUser(UserAttributes(password:p.text));if(mounted){p.clear();c.clear();ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تغيير كلمة المرور.')));}}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تغيير كلمة المرور: $e')));}finally{if(mounted)setState(()=>busy=false);}}
-  @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('الأمان')),body:ListView(padding:const EdgeInsets.all(16),children:[const ListTile(leading:Icon(Icons.shield_outlined),title:Text('حماية الحساب'),subtitle:Text('غيّر كلمة المرور بشكل دوري ولا تشاركها مع أي شخص.')),TextField(controller:p,obscureText:obscure,decoration:InputDecoration(labelText:'كلمة المرور الجديدة',suffixIcon:IconButton(onPressed:()=>setState(()=>obscure=!obscure),icon:Icon(obscure?Icons.visibility:Icons.visibility_off)))),const SizedBox(height:12),TextField(controller:c,obscureText:obscure,decoration:const InputDecoration(labelText:'تأكيد كلمة المرور')),const SizedBox(height:18),FilledButton(onPressed:busy?null:save,child:Text(busy?'جاري الحفظ...':'حفظ كلمة المرور'))]));
+class SecurityPage extends StatefulWidget {
+  const SecurityPage({super.key});
+
+  @override
+  State<SecurityPage> createState() => _SecurityPageState();
+}
+
+class _SecurityPageState extends State<SecurityPage> {
+  final p = TextEditingController();
+  final c = TextEditingController();
+  bool busy = false;
+  bool obscure = true;
+
+  @override
+  void dispose() {
+    p.dispose();
+    c.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    if (p.text.length < 6 || p.text != c.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('كلمتا المرور غير متطابقتين أو أقصر من 6 أحرف.')),
+      );
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      await sb.auth.updateUser(UserAttributes(password: p.text));
+      if (mounted) {
+        p.clear();
+        c.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم تغيير كلمة المرور.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تغيير كلمة المرور: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('الأمان')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const ListTile(
+            leading: Icon(Icons.shield_outlined),
+            title: Text('حماية الحساب'),
+            subtitle: Text('غيّر كلمة المرور بشكل دوري ولا تشاركها مع أي شخص.'),
+          ),
+          TextField(
+            controller: p,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              labelText: 'كلمة المرور الجديدة',
+              suffixIcon: IconButton(
+                onPressed: () => setState(() => obscure = !obscure),
+                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: c,
+            obscureText: obscure,
+            decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور'),
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            onPressed: busy ? null : save,
+            child: Text(busy ? 'جاري الحفظ...' : 'حفظ كلمة المرور'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SimpleNPage extends StatelessWidget {
-  final String title; final IconData icon; final String message;
-  const SimpleNPage({super.key,required this.title,required this.icon,required this.message});
-  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:bg,appBar:AppBar(title:Text(title,style:const TextStyle(fontWeight:FontWeight.w900)),leading:IconButton(onPressed:()=>Navigator.maybePop(context),icon:const Icon(Icons.arrow_back_rounded))),body:Center(child:Padding(padding:const EdgeInsets.all(28),child:Column(mainAxisSize:MainAxisSize.min,children:[Container(width:92,height:92,decoration:BoxDecoration(shape:BoxShape.circle,color:const Color(0xFF101923),border:Border.all(color:const Color(0xFF23323D))),child:Icon(icon,size:44,color:cyan)),const SizedBox(height:18),Text(message,textAlign:TextAlign.center,style:const TextStyle(fontSize:16,color:Colors.white70,height:1.5))]))));
+  final String title;
+  final IconData icon;
+  final String message;
+
+  const SimpleNPage({super.key, required this.title, required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+        leading: IconButton(
+          onPressed: () => Navigator.maybePop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF101923),
+                  border: Border.all(color: const Color(0xFF23323D)),
+                ),
+                child: Icon(icon, size: 44, color: cyan),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, color: Colors.white70, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class QrPage extends StatelessWidget {
   const QrPage({super.key});
-  @override Widget build(BuildContext c){final u=sb.auth.currentUser; final data='n://profile/${u?.id ?? 'guest'}';return Scaffold(backgroundColor:bg,appBar:AppBar(title:const Text('رمز QR',style:TextStyle(fontWeight:FontWeight.w900))),body:Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Container(width:250,height:250,padding:const EdgeInsets.all(20),decoration:BoxDecoration(color:Colors.white,borderRadius:BorderRadius.circular(24)),child:CustomPaint(painter:_QrPainter(data),size:const Size(210,210))),const SizedBox(height:18),Text(data,style:const TextStyle(color:Colors.white60,fontSize:11)),const SizedBox(height:10),FilledButton.icon(onPressed:()async{try{await Share.share(data,subject:'ملفي على N');}catch(_){ }},icon:const Icon(Icons.share),label:const Text('مشاركة الرمز'))]));}
+
+  @override
+  Widget build(BuildContext c) {
+    final u = sb.auth.currentUser;
+    final data = 'n://profile/${u?.id ?? 'guest'}';
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: const Text('رمز QR', style: TextStyle(fontWeight: FontWeight.w900)),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 250,
+              height: 250,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: CustomPaint(
+                painter: _QrPainter(data),
+                size: const Size(210, 210),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(data, style: const TextStyle(color: Colors.white60, fontSize: 11)),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: () async {
+                try {
+                  await Share.share(data, subject: 'ملفي على N');
+                } catch (_) {}
+              },
+              icon: const Icon(Icons.share),
+              label: const Text('مشاركة الرمز'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
 class _QrPainter extends CustomPainter {
-  final String data; _QrPainter(this.data);
-  @override void paint(Canvas canvas,Size size){final p=Paint()..color=Colors.black; final n=29; final cell=size.width/n; final seed=data.codeUnits.fold<int>(17,(a,b)=>(a*31+b)&0x7fffffff); bool bit(int x,int y)=>((x*73856093+y*19349663+seed)&1)==0; void finder(int ox,int oy){canvas.drawRect(Rect.fromLTWH(ox*cell,oy*cell,7*cell,7*cell),p);p.color=Colors.white;canvas.drawRect(Rect.fromLTWH((ox+1)*cell,(oy+1)*cell,5*cell,5*cell),p);p.color=Colors.black;canvas.drawRect(Rect.fromLTWH((ox+2)*cell,(oy+2)*cell,3*cell,3*cell),p);}for(var y=0;y<n;y++){for(var x=0;x<n;x++){if((x<7&&y<7)||(x>=n-7&&y<7)||(x<7&&y>=n-7))continue;if(bit(x,y))canvas.drawRect(Rect.fromLTWH(x*cell,y*cell,cell+.2,cell+.2),p);}}finder(0,0);finder(n-7,0);finder(0,n-7);}
-  @override bool shouldRepaint(covariant _QrPainter old)=>old.data!=data;
+  final String data;
+  _QrPainter(this.data);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = Colors.black;
+    final n = 29;
+    final cell = size.width / n;
+    final seed = data.codeUnits.fold<int>(17, (a, b) => (a * 31 + b) & 0x7fffffff);
+    bool bit(int x, int y) => ((x * 73856093 + y * 19349663 + seed) & 1) == 0;
+
+    void finder(int ox, int oy) {
+      canvas.drawRect(Rect.fromLTWH(ox * cell, oy * cell, 7 * cell, 7 * cell), p);
+      p.color = Colors.white;
+      canvas.drawRect(Rect.fromLTWH((ox + 1) * cell, (oy + 1) * cell, 5 * cell, 5 * cell), p);
+      p.color = Colors.black;
+      canvas.drawRect(Rect.fromLTWH((ox + 2) * cell, (oy + 2) * cell, 3 * cell, 3 * cell), p);
+    }
+
+    for (var y = 0; y < n; y++) {
+      for (var x = 0; x < n; x++) {
+        if ((x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7)) continue;
+        if (bit(x, y)) {
+          canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell + .2, cell + .2), p);
+        }
+      }
+    }
+    finder(0, 0);
+    finder(n - 7, 0);
+    finder(0, n - 7);
+  }
+
+  @override
+  bool shouldRepaint(covariant _QrPainter old) => old.data != data;
 }
 
-class ActivityPage extends StatefulWidget { const ActivityPage({super.key}); @override State<ActivityPage> createState()=>_ActivityPageState(); }
-class _ActivityPageState extends State<ActivityPage>{bool loading=true;List<Map<String,dynamic>> items=[];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('notifications').select('id,type,created_at,read,actor_id,post_id').eq('user_id',u.id).order('created_at',ascending:false).limit(100);if(mounted)setState(()=>items=List<Map<String,dynamic>>.from(r));}catch(_){ }finally{if(mounted)setState(()=>loading=false);}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('مركز النشاط')),body:loading?const Center(child:CircularProgressIndicator()):items.isEmpty?const Center(child:Text('لا يوجد نشاط بعد')):ListView.separated(itemCount:items.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,i){final e=items[i];return ListTile(leading:Icon(_notificationIcon(e['type']),color:e['read']==true?Colors.white54:cyan),title:Text(_notificationText(e['type'])),subtitle:Text((e['created_at']??'').toString()),onTap:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const NotificationsPage())));}});}
-IconData _notificationIcon(dynamic t)=>t=='like'?Icons.favorite:t=='comment'?Icons.chat_bubble_outline:t=='follow'?Icons.person_add_alt_1:Icons.card_giftcard;
-String _notificationText(dynamic t)=>t=='like'?'إعجاب بمحتواك':t=='comment'?'تعليق على منشورك':t=='follow'?'بدأ متابعتك':'أرسل لك هدية';
+class ActivityPage extends StatefulWidget {
+  const ActivityPage({super.key});
 
-class VisitorsPage extends StatefulWidget { const VisitorsPage({super.key}); @override State<VisitorsPage> createState()=>_VisitorsPageState(); }
-class _VisitorsPageState extends State<VisitorsPage>{List<Map<String,dynamic>> rows=[];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('profile_views').select('viewer_id,created_at').eq('profile_id',u.id).order('created_at',ascending:false).limit(100);if(mounted)setState(()=>rows=List<Map<String,dynamic>>.from(r));}catch(_){}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('زيارات الملف الشخصي')),body:rows.isEmpty?const Center(child:Text('لا توجد زيارات مسجلة بعد')):ListView.builder(itemCount:rows.length,itemBuilder:(_,i)=>ListTile(leading:const CircleAvatar(child:Icon(Icons.person)),title:Text('@${rows[i]['viewer_id']}'),subtitle:Text((rows[i]['created_at']??'').toString()))));}
-
-class BlockedPage extends StatefulWidget { const BlockedPage({super.key}); @override State<BlockedPage> createState()=>_BlockedPageState(); }
-class _BlockedPageState extends State<BlockedPage>{List<Map<String,dynamic>> rows=[];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('blocked_users').select('blocked_id,created_at').eq('blocker_id',u.id).order('created_at',ascending:false);if(mounted)setState(()=>rows=List<Map<String,dynamic>>.from(r));}catch(_){}}Future<void>remove(String id)async{try{await sb.from('blocked_users').delete().eq('blocker_id',sb.auth.currentUser!.id).eq('blocked_id',id);load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إلغاء الحظر: $e')));}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('الحسابات المحظورة')),body:rows.isEmpty?const Center(child:Text('لا توجد حسابات محظورة')):ListView.builder(itemCount:rows.length,itemBuilder:(_,i)=>ListTile(leading:const CircleAvatar(child:Icon(Icons.block)),title:Text(rows[i]['blocked_id'].toString()),trailing:TextButton(onPressed:()=>remove(rows[i]['blocked_id'].toString()),child:const Text('إلغاء الحظر')))));}
-
-class OfflinePage extends StatelessWidget { const OfflinePage({super.key}); @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('المحتوى المحفوظ')),body:Center(child:Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.download_done_rounded,size:70,color:cyan),const SizedBox(height:14),const Text('المشاهدة دون اتصال تحتاج صلاحية التخزين المحلي في الجهاز.'),const SizedBox(height:12),FilledButton(onPressed:()=>Navigator.pop(c),child:const Text('رجوع'))])); }
-class StudioPage extends StatelessWidget { const StudioPage({super.key}); @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('N Studio')),body:ListView(padding:const EdgeInsets.all(14),children:[ListTile(leading:const Icon(Icons.video_library,color:cyan),title:const Text('إنشاء منشور'),subtitle:const Text('اختيار فيديو أو صورة ونشرها'),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const PublishPage()))),ListTile(leading:const Icon(Icons.sensors,color:pink),title:const Text('بدء بث مباشر'),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const LivePage()))),ListTile(leading:const Icon(Icons.auto_awesome,color:cyan),title:const Text('N AI'),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>const AiPage()))) ])); }
-
-class WalletPage extends StatefulWidget { const WalletPage({super.key}); @override State<WalletPage> createState()=>_WalletPageState(); }
-class _WalletPageState extends State<WalletPage>{int balance=0;int selected=0;final gifts=const [['وردة',10,Icons.local_florist],['قلب',50,Icons.favorite],['أسد',500,Icons.pets],['سيارة',1000,Icons.directions_car],['يخت',5000,Icons.directions_boat],['قصر',10000,Icons.castle],['طائر النور',20000,Icons.flutter_dash],['نجمة',50000,Icons.auto_awesome],['ختمة',100000,Icons.star_border]];@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('user_coins').select('balance').eq('user_id',u.id).maybeSingle();if(mounted)setState(()=>balance=(r?['balance']??0) as int);}catch(_){}}Future<void>sendGift()async{final u=sb.auth.currentUser;if(u==null)return;final g=gifts[selected];final other=await showDialog<String>(context:context,builder:(ctx){final x=TextEditingController();return AlertDialog(title:const Text('إرسال هدية'),content:TextField(controller:x,decoration:const InputDecoration(labelText:'معرّف المستلم (UUID)')),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('إلغاء')),FilledButton(onPressed:()=>Navigator.pop(ctx,x.text.trim()),child:const Text('إرسال'))]);});if(other==null||other.isEmpty)return;try{await sb.rpc('send_gift',params:{'p_receiver':other,'p_name':g[0],'p_cost':g[1]});await load();if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تم إرسال ${g[0]} بنجاح')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إرسال الهدية: $e')));}}@override Widget build(BuildContext c)=>Scaffold(backgroundColor:bg,appBar:AppBar(title:const Text('المتجر والهدايا',style:TextStyle(fontWeight:FontWeight.w900)),actions:[Padding(padding:const EdgeInsets.only(left:12),child:Center(child:Text('🪙 $balance',style:const TextStyle(fontWeight:FontWeight.w900))))]),body:ListView(padding:const EdgeInsets.fromLTRB(12,8,12,30),children:[Row(children:[Expanded(child:FilledButton(onPressed:()=>setState(()=>selected=selected),style:FilledButton.styleFrom(backgroundColor:const Color(0xFF171D25)),child:const Text('الهدايا'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:(){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('شراء العملات يحتاج بوابة دفع مرتبطة بحسابك.')));},child:const Text('المتجر')))]),const SizedBox(height:14),GridView.builder(shrinkWrap:true,physics:const NeverScrollableScrollPhysics(),itemCount:gifts.length,gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:8,mainAxisSpacing:8,childAspectRatio:.86),itemBuilder:(_,i){final g=gifts[i];final on=i==selected;return InkWell(onTap:()=>setState(()=>selected=i),borderRadius:BorderRadius.circular(16),child:Container(decoration:BoxDecoration(color:const Color(0xFF0E131A),borderRadius:BorderRadius.circular(16),border:Border.all(color:on?pink:const Color(0xFF202B35),width:on?1.6:1)),child:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Icon(g[2] as IconData,size:42,color:i%2==0?pink:cyan),const SizedBox(height:7),Text(g[0] as String,style:const TextStyle(fontWeight:FontWeight.w800)),const SizedBox(height:4),Text('🪙 ${g[1]}',style:const TextStyle(color:Colors.white70,fontSize:11))])));}),const SizedBox(height:18),SizedBox(height:52,child:FilledButton(onPressed:sendGift,style:FilledButton.styleFrom(backgroundColor:pink,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(15))),child:const Text('إرسال هدية',style:TextStyle(fontSize:17,fontWeight:FontWeight.w900))))]));}
+  @override
+  State<ActivityPage> createState() => _ActivityPageState();
 }
 
-class NotificationsPage extends StatefulWidget { const NotificationsPage({super.key}); @override State<NotificationsPage> createState()=>_NotificationsPageState(); }
-class _NotificationsPageState extends State<NotificationsPage>{List<Map<String,dynamic>> rows=[];bool loading=true;@override void initState(){super.initState();load();}Future<void>load()async{try{final u=sb.auth.currentUser;if(u==null)return;final r=await sb.from('notifications').select('id,type,created_at,read,actor_id,post_id').eq('user_id',u.id).order('created_at',ascending:false).limit(100);if(mounted)setState(()=>rows=List<Map<String,dynamic>>.from(r));}catch(_){ }finally{if(mounted)setState(()=>loading=false);}}Future<void>markAll()async{try{final u=sb.auth.currentUser;if(u==null)return;await sb.from('notifications').update({'read':true}).eq('user_id',u.id).eq('read',false);await load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تحديث الإشعارات: $e')));}}@override Widget build(BuildContext context)=>Scaffold(backgroundColor:bg,appBar:AppBar(title:const Text('الإشعارات',style:TextStyle(fontWeight:FontWeight.w900)),actions:[IconButton(onPressed:markAll,icon:const Icon(Icons.done_all_rounded))]),body:loading?const Center(child:CircularProgressIndicator()):rows.isEmpty?const Center(child:Text('لا توجد إشعارات بعد')):ListView.separated(padding:const EdgeInsets.fromLTRB(10,8,10,30),itemCount:rows.length,separatorBuilder:(_,__)=>const Divider(height:1),itemBuilder:(_,i){final e=rows[i];return ListTile(contentPadding:const EdgeInsets.symmetric(horizontal:8,vertical:4),leading:Icon(_notificationIcon(e['type']),color:e['read']==true?Colors.white54:cyan),title:Text(_notificationText(e['type']),style:TextStyle(fontWeight:e['read']==true?FontWeight.w500:FontWeight.w900)),subtitle:Text((e['created_at']??'').toString()),onTap:()async{if(e['read']!=true){await sb.from('notifications').update({'read':true}).eq('id',e['id']);load();}});}});}
+class _ActivityPageState extends State<ActivityPage> {
+  bool loading = true;
+  List<Map<String, dynamic>> items = [];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      final r = await sb
+          .from('notifications')
+          .select('id,type,created_at,read,actor_id,post_id')
+          .eq('user_id', u.id)
+          .order('created_at', ascending: false)
+          .limit(100);
+      if (mounted) setState(() => items = List<Map<String, dynamic>>.from(r));
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('مركز النشاط')),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : items.isEmpty
+              ? const Center(child: Text('لا يوجد نشاط بعد'))
+              : ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final e = items[i];
+                    return ListTile(
+                      leading: Icon(_notificationIcon(e['type']), color: e['read'] == true ? Colors.white54 : cyan),
+                      title: Text(_notificationText(e['type'])),
+                      subtitle: Text((e['created_at'] ?? '').toString()),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const NotificationsPage()),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+IconData _notificationIcon(dynamic t) => t == 'like'
+    ? Icons.favorite
+    : t == 'comment'
+        ? Icons.chat_bubble_outline
+        : t == 'follow'
+            ? Icons.person_add_alt_1
+            : Icons.card_giftcard;
+
+String _notificationText(dynamic t) => t == 'like'
+    ? 'إعجاب بمحتواك'
+    : t == 'comment'
+        ? 'تعليق على منشورك'
+        : t == 'follow'
+            ? 'بدأ متابعتك'
+            : 'أرسل لك هدية';
+
+class VisitorsPage extends StatefulWidget {
+  const VisitorsPage({super.key});
+
+  @override
+  State<VisitorsPage> createState() => _VisitorsPageState();
+}
+
+class _VisitorsPageState extends State<VisitorsPage> {
+  List<Map<String, dynamic>> rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      final r = await sb
+          .from('profile_views')
+          .select('viewer_id,created_at')
+          .eq('profile_id', u.id)
+          .order('created_at', ascending: false)
+          .limit(100);
+      if (mounted) setState(() => rows = List<Map<String, dynamic>>.from(r));
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('زيارات الملف الشخصي')),
+      body: rows.isEmpty
+          ? const Center(child: Text('لا توجد زيارات مسجلة بعد'))
+          : ListView.builder(
+              itemCount: rows.length,
+              itemBuilder: (_, i) => ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.person)),
+                title: Text('@${rows[i]['viewer_id']}'),
+                subtitle: Text((rows[i]['created_at'] ?? '').toString()),
+              ),
+            ),
+    );
+  }
+}
+
+class BlockedPage extends StatefulWidget {
+  const BlockedPage({super.key});
+
+  @override
+  State<BlockedPage> createState() => _BlockedPageState();
+}
+
+class _BlockedPageState extends State<BlockedPage> {
+  List<Map<String, dynamic>> rows = [];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      final r = await sb
+          .from('blocked_users')
+          .select('blocked_id,created_at')
+          .eq('blocker_id', u.id)
+          .order('created_at', ascending: false);
+      if (mounted) setState(() => rows = List<Map<String, dynamic>>.from(r));
+    } catch (_) {}
+  }
+
+  Future<void> remove(String id) async {
+    try {
+      await sb.from('blocked_users').delete().eq('blocker_id', sb.auth.currentUser!.id).eq('blocked_id', id);
+      await load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إلغاء الحظر: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('الحسابات المحظورة')),
+      body: rows.isEmpty
+          ? const Center(child: Text('لا توجد حسابات محظورة'))
+          : ListView.builder(
+              itemCount: rows.length,
+              itemBuilder: (_, i) => ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.block)),
+                title: Text(rows[i]['blocked_id'].toString()),
+                trailing: TextButton(
+                  onPressed: () => remove(rows[i]['blocked_id'].toString()),
+                  child: const Text('إلغاء الحظر'),
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class OfflinePage extends StatelessWidget {
+  const OfflinePage({super.key});
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('المحتوى المحفوظ')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.download_done_rounded, size: 70, color: cyan),
+            const SizedBox(height: 14),
+            const Text('المشاهدة دون اتصال تحتاج صلاحية التخزين المحلي في الجهاز.'),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: () => Navigator.pop(c), child: const Text('رجوع')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class StudioPage extends StatelessWidget {
+  const StudioPage({super.key});
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('N Studio')),
+      body: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.video_library, color: cyan),
+            title: const Text('إنشاء منشور'),
+            subtitle: const Text('اختيار فيديو أو صورة ونشرها'),
+            onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const PublishPage())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.sensors, color: pink),
+            title: const Text('بدء بث مباشر'),
+            onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const LivePage())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome, color: cyan),
+            title: const Text('N AI'),
+            onTap: () => Navigator.push(c, MaterialPageRoute(builder: (_) => const AiPage())),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class WalletPage extends StatefulWidget {
+  const WalletPage({super.key});
+
+  @override
+  State<WalletPage> createState() => _WalletPageState();
+}
+
+class _WalletPageState extends State<WalletPage> {
+  int balance = 0;
+  int selected = 0;
+  final gifts = const [
+    ['وردة', 10, Icons.local_florist],
+    ['قلب', 50, Icons.favorite],
+    ['أسد', 500, Icons.pets],
+    ['سيارة', 1000, Icons.directions_car],
+    ['يخت', 5000, Icons.directions_boat],
+    ['قصر', 10000, Icons.castle],
+    ['طائر النور', 20000, Icons.flutter_dash],
+    ['نجمة', 50000, Icons.auto_awesome],
+    ['ختمة', 100000, Icons.star_border],
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      final r = await sb.from('user_coins').select('balance').eq('user_id', u.id).maybeSingle();
+      if (mounted) setState(() => balance = (r?['balance'] ?? 0) as int);
+    } catch (_) {}
+  }
+
+  Future<void> sendGift() async {
+    final u = sb.auth.currentUser;
+    if (u == null) return;
+    final g = gifts[selected];
+    final other = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final x = TextEditingController();
+        return AlertDialog(
+          title: const Text('إرسال هدية'),
+          content: TextField(controller: x, decoration: const InputDecoration(labelText: 'معرّف المستلم (UUID)')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, x.text.trim()), child: const Text('إرسال')),
+          ],
+        );
+      },
+    );
+    if (other == null || other.isEmpty) return;
+    try {
+      await sb.rpc('send_gift', params: {'p_receiver': other, 'p_name': g[0], 'p_cost': g[1]});
+      await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم إرسال ${g[0]} بنجاح')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إرسال الهدية: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: const Text('المتجر والهدايا', style: TextStyle(fontWeight: FontWeight.w900)),
+        actions: [Padding(padding: const EdgeInsets.only(left: 12), child: Center(child: Text('🪙 $balance', style: const TextStyle(fontWeight: FontWeight.w900))))],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 30),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => setState(() => selected = selected),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF171D25)),
+                  child: const Text('الهدايا'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('شراء العملات يحتاج بوابة دفع مرتبطة بحسابك.'))),
+                  child: const Text('المتجر'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: gifts.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: .86,
+            ),
+            itemBuilder: (_, i) {
+              final g = gifts[i];
+              final on = i == selected;
+              return InkWell(
+                onTap: () => setState(() => selected = i),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0E131A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: on ? pink : const Color(0xFF202B35), width: on ? 1.6 : 1),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(g[2] as IconData, size: 42, color: i % 2 == 0 ? pink : cyan),
+                      const SizedBox(height: 7),
+                      Text(g[0] as String, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text('🪙 ${g[1]}', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 52,
+            child: FilledButton(
+              onPressed: sendGift,
+              style: FilledButton.styleFrom(backgroundColor: pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              child: const Text('إرسال هدية', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class NotificationsPage extends StatefulWidget {
+  const NotificationsPage({super.key});
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  List<Map<String, dynamic>> rows = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      final r = await sb
+          .from('notifications')
+          .select('id,type,created_at,read,actor_id,post_id')
+          .eq('user_id', u.id)
+          .order('created_at', ascending: false)
+          .limit(100);
+      if (mounted) setState(() => rows = List<Map<String, dynamic>>.from(r));
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> markAll() async {
+    try {
+      final u = sb.auth.currentUser;
+      if (u == null) return;
+      await sb.from('notifications').update({'read': true}).eq('user_id', u.id).eq('read', false);
+      await load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحديث الإشعارات: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: const Text('الإشعارات', style: TextStyle(fontWeight: FontWeight.w900)),
+        actions: [IconButton(onPressed: markAll, icon: const Icon(Icons.done_all_rounded))],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : rows.isEmpty
+              ? const Center(child: Text('لا توجد إشعارات بعد'))
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 30),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final e = rows[i];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      leading: Icon(_notificationIcon(e['type']), color: e['read'] == true ? Colors.white54 : cyan),
+                      title: Text(
+                        _notificationText(e['type']),
+                        style: TextStyle(fontWeight: e['read'] == true ? FontWeight.w500 : FontWeight.w900),
+                      ),
+                      subtitle: Text((e['created_at'] ?? '').toString()),
+                      onTap: () async {
+                        if (e['read'] != true) {
+                          await sb.from('notifications').update({'read': true}).eq('id', e['id']);
+                          await load();
+                        }
+                      },
+                    );
+                  },
+                ),
+    );
+  }
+}
 
 class PrivacyPage extends StatefulWidget {
   const PrivacyPage({super.key});
