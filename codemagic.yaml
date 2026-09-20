@@ -14,42 +14,23 @@ workflows:
       - name: Validate release environment
         script: |
           set -euo pipefail
-
-          test -n "${SUPABASE_URL:-}" || {
-            echo "ERROR: SUPABASE_URL is missing"
-            exit 1
-          }
-
-          test -n "${SUPABASE_PUBLISHABLE_KEY:-}" || {
-            echo "ERROR: SUPABASE_PUBLISHABLE_KEY is missing"
-            exit 1
-          }
-
-          test -f firebase/google-services.json || {
-            echo "ERROR: firebase/google-services.json is missing"
-            exit 1
-          }
-
+          test -n "${SUPABASE_URL:-}" || { echo "ERROR: SUPABASE_URL is missing"; exit 1; }
+          test -n "${SUPABASE_PUBLISHABLE_KEY:-}" || { echo "ERROR: SUPABASE_PUBLISHABLE_KEY is missing"; exit 1; }
+          test -f firebase/google-services.json || { echo "ERROR: firebase/google-services.json is missing"; exit 1; }
           echo "Release environment validated"
 
       - name: Ensure Android project exists
         script: |
-          set -euo pipefail
-
           if [ ! -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
             flutter create --platforms=android --org com.n .
           fi
 
-          test -f android/app/build.gradle || test -f android/app/build.gradle.kts
-
       - name: Configure Firebase Android
         script: |
-          set -euo pipefail
-
-          test -f firebase/google-services.json || {
+          if [ ! -f firebase/google-services.json ]; then
             echo "ERROR: firebase/google-services.json is missing"
             exit 1
-          }
+          fi
 
           mkdir -p android/app
           cp firebase/google-services.json android/app/google-services.json
@@ -58,279 +39,115 @@ workflows:
           from pathlib import Path
           import re
 
-          settings = next(
-              (
-                  p for p in [
-                      Path("android/settings.gradle.kts"),
-                      Path("android/settings.gradle")
-                  ]
-                  if p.exists()
-              ),
-              None
-          )
-
-          app = next(
-              (
-                  p for p in [
-                      Path("android/app/build.gradle.kts"),
-                      Path("android/app/build.gradle")
-                  ]
-                  if p.exists()
-              ),
-              None
-          )
-
+          settings = next((p for p in [Path("android/settings.gradle.kts"), Path("android/settings.gradle")] if p.exists()), None)
+          app = next((p for p in [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")] if p.exists()), None)
           if settings is None or app is None:
               raise SystemExit("ERROR: Android Gradle files not found")
 
           st = settings.read_text()
-
-          if "com.google.gms.google-services" not in st:
-              if settings.suffix == ".kts":
-                  pattern = r"(plugins\s*\{)"
-                  replacement = (
-                      r'\1\n'
-                      '    id("com.google.gms.google-services") '
-                      'version "4.4.2" apply false'
-                  )
-              else:
-                  pattern = r"(plugins\s*\{)"
-                  replacement = (
-                      r'\1\n'
-                      '    id "com.google.gms.google-services" '
-                      'version "4.4.2" apply false'
-                  )
-
-              new_st, count = re.subn(
-                  pattern,
-                  replacement,
-                  st,
-                  count=1
-              )
-
-              if count != 1:
-                  raise SystemExit(
-                      "ERROR: Could not find plugins block in settings file"
-                  )
-
-              st = new_st
-              settings.write_text(st)
+          if settings.suffix == ".kts":
+              if "com.google.gms.google-services" not in st:
+                  st = re.sub(
+                      r'(plugins\s*\{)',
+                      r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                      st, count=1)
+          else:
+              if "com.google.gms.google-services" not in st:
+                  st = re.sub(
+                      r'(plugins\s*\{)',
+                      r'\1\n    id "com.google.gms.google-services" version "4.4.2" apply false',
+                      st, count=1)
+          settings.write_text(st)
 
           ap = app.read_text()
-
           if "com.google.gms.google-services" not in ap:
               if app.suffix == ".kts":
-                  pattern = r"(plugins\s*\{)"
-                  replacement = (
-                      r'\1\n'
-                      '    id("com.google.gms.google-services")'
-                  )
+                  ap = re.sub(r'(plugins\s*\{)', r'\1\n    id("com.google.gms.google-services")', ap, count=1)
               else:
-                  pattern = r"(plugins\s*\{)"
-                  replacement = (
-                      r'\1\n'
-                      '    id "com.google.gms.google-services"'
-                  )
-
-              new_ap, count = re.subn(
-                  pattern,
-                  replacement,
-                  ap,
-                  count=1
-              )
-
-              if count != 1:
-                  raise SystemExit(
-                      "ERROR: Could not find plugins block in app Gradle file"
-                  )
-
-              ap = new_ap
-              app.write_text(ap)
-
-          print("Firebase Android configuration completed")
+                  ap = re.sub(r'(plugins\s*\{)', r'\1\n    id "com.google.gms.google-services"', ap, count=1)
+          app.write_text(ap)
+          print("Firebase Android configuration added")
           PYCODE
 
       - name: Configure Android
         script: |
-          set -euo pipefail
-
+          # file_picker and flutter_plugin_android_lifecycle require Android API 36.
+          # Flutter's generated template may use flutter.compileSdkVersion, so replace
+          # the app module's compileSdk reference explicitly after flutter create.
           python3 - <<'PYCODE'
           from pathlib import Path
           import re
 
-          candidates = [
-              Path("android/app/build.gradle.kts"),
-              Path("android/app/build.gradle")
-          ]
+          app_files = [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]
+          existing = [p for p in app_files if p.exists()]
+          if not existing:
+              raise SystemExit("ERROR: android/app/build.gradle(.kts) not found")
 
-          app_files = [p for p in candidates if p.exists()]
+          for p in existing:
+              lines = p.read_text().splitlines()
+              out = []
+              changed = False
+              for line in lines:
+                  if re.match(r'^\s*compileSdk(?:Version)?\s*(?:=\s*)?.*$', line):
+                      indent = line[:len(line)-len(line.lstrip())]
+                      key = "compileSdk" if p.suffix == ".kts" else "compileSdkVersion"
+                      line = f"{indent}{key} = 36" if p.suffix == ".kts" else f"{indent}{key} 36"
+                      changed = True
+                  out.append(line)
+              text = "\n".join(out) + "\n"
+              # If the generated file has no compileSdk line, inject one in android {}.
+              if not changed:
+                  text, n = re.subn(r'(android\s*\{)', r'\1\n    compileSdk = 36', text, count=1)
+                  changed = n > 0
+              p.write_text(text)
 
-          if not app_files:
-              raise SystemExit(
-                  "ERROR: android/app/build.gradle(.kts) not found"
-              )
-
-          for p in app_files:
-              text = p.read_text()
-
-              if p.suffix == ".kts":
-                  pattern = r"(?m)^(\s*)compileSdk(?:Version)?\s*(?:=\s*)?.*$"
-                  replacement = r"\g<1>compileSdk = 36"
-              else:
-                  pattern = r"(?m)^(\s*)compileSdk(?:Version)?\s*.*$"
-                  replacement = r"\g<1>compileSdkVersion 36"
-
-              new_text, count = re.subn(
-                  pattern,
-                  replacement,
-                  text,
-                  count=1
-              )
-
-              if count == 0:
-                  if p.suffix == ".kts":
-                      new_text, count = re.subn(
-                          r"(android\s*\{)",
-                          r"\1\n    compileSdk = 36",
-                          text,
-                          count=1
-                      )
-                  else:
-                      new_text, count = re.subn(
-                          r"(android\s*\{)",
-                          r"\1\n    compileSdkVersion 36",
-                          text,
-                          count=1
-                      )
-
-              if count == 0:
-                  raise SystemExit(
-                      f"ERROR: Could not configure compileSdk in {p}"
-                  )
-
-              p.write_text(new_text)
-
-          verify = "\n".join(
-              p.read_text() for p in app_files
-          )
-
-          if not re.search(
-              r"compileSdk(?:Version)?\s*(?:=\s*|\s+)36\b",
-              verify
-          ):
-              raise SystemExit(
-                  "ERROR: Android app compileSdk is not 36"
-              )
-
-          print("Android compileSdk 36 configured successfully")
+          verify = "\n".join(p.read_text() for p in existing)
+          if not re.search(r'compileSdk(?:Version)?\s*(?:=\s*|\s+)36\b', verify):
+              raise SystemExit("ERROR: android app compileSdk is not 36")
+          print("Android app compileSdk 36 configured successfully")
+          for p in existing:
+              print(p)
+              for line in p.read_text().splitlines():
+                  if "compileSdk" in line:
+                      print("  ", line)
           PYCODE
 
           mkdir -p android/app/src/main
 
-          test -f android/app/src/main/AndroidManifest.xml || {
-            echo "ERROR: AndroidManifest.xml is missing"
+          if [ ! -f android/app/src/main/AndroidManifest.xml ]; then
+            echo "Android project was not generated correctly"
             exit 1
-          }
+          fi
 
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p "android/app/src/main/res/mipmap-$d"
-
-            test -f \
-              "assets/branding/android/mipmap-$d/ic_launcher.png" || {
-                echo "ERROR: Missing launcher icon for $d"
-                exit 1
-              }
-
-            cp \
-              "assets/branding/android/mipmap-$d/ic_launcher.png" \
-              "android/app/src/main/res/mipmap-$d/ic_launcher.png"
-
-            cp \
-              "assets/branding/android/mipmap-$d/ic_launcher.png" \
-              "android/app/src/main/res/mipmap-$d/ic_launcher_round.png"
+            cp "assets/branding/android/mipmap-$d/ic_launcher.png" "android/app/src/main/res/mipmap-$d/ic_launcher.png"
+            cp "assets/branding/android/mipmap-$d/ic_launcher.png" "android/app/src/main/res/mipmap-$d/ic_launcher_round.png"
           done
 
-          python3 - <<'PYCODE'
-          from pathlib import Path
+          python3 -c 'from pathlib import Path; p=Path("android/app/src/main/AndroidManifest.xml"); s=p.read_text(); perms=["<uses-permission android:name=\"android.permission.INTERNET\" />","<uses-permission android:name=\"android.permission.CAMERA\" />","<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />"]; marker="<application"; s=s if all(x in s for x in perms) else s.replace(marker, "\n".join(x for x in perms if x not in s)+"\n"+marker,1); p.write_text(s)'
 
-          p = Path("android/app/src/main/AndroidManifest.xml")
-          s = p.read_text()
+          sed -i.bak 's/android:label="[^"]*"/android:label="N"/' android/app/src/main/AndroidManifest.xml || true
+          rm -f android/app/src/main/AndroidManifest.xml.bak
 
-          permissions = [
-              '<uses-permission android:name="android.permission.INTERNET" />',
-              '<uses-permission android:name="android.permission.CAMERA" />',
-              '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
-          ]
-
-          marker = "<application"
-
-          missing = [
-              permission
-              for permission in permissions
-              if permission not in s
-          ]
-
-          if missing:
-              s = s.replace(
-                  marker,
-                  "\n".join(missing) + "\n" + marker,
-                  1
-              )
-
-          s = s.replace(
-              'android:label="N"',
-              'android:label="N"'
-          )
-
-          callback = """<intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="n" android:host="auth-callback" />
-            </intent-filter>"""
-
-          if 'android:scheme="n"' not in s:
-              s = s.replace(
-                  "</activity>",
-                  callback + "\n        </activity>",
-                  1
-              )
-
-          p.write_text(s)
-
-          print("Android manifest configured successfully")
-          PYCODE
+          python3 -c 'from pathlib import Path; p=Path("android/app/src/main/AndroidManifest.xml"); s=p.read_text(); b="<intent-filter>\n                <action android:name=\"android.intent.action.VIEW\" />\n                <category android:name=\"android.intent.category.DEFAULT\" />\n                <category android:name=\"android.intent.category.BROWSABLE\" />\n                <data android:scheme=\"n\" android:host=\"auth-callback\" />\n            </intent-filter>"; p.write_text(s.replace("</activity>", b+"\n        </activity>", 1) if "android:scheme=\"n\"" not in s else s)'
 
       - name: Configure release signing
         script: |
           set -euo pipefail
-
-          echo "Checking Android release signing credentials..."
-
-          : "${CM_KEYSTORE_PASSWORD:?CM_KEYSTORE_PASSWORD is required}"
-          : "${CM_KEY_ALIAS:?CM_KEY_ALIAS is required}"
-          : "${CM_KEY_PASSWORD:?CM_KEY_PASSWORD is required}"
+          : "${CM_KEYSTORE_PASSWORD:?CM_KEYSTORE_PASSWORD is required for a release build}"
+          : "${CM_KEY_ALIAS:?CM_KEY_ALIAS is required for a release build}"
+          : "${CM_KEY_PASSWORD:?CM_KEY_PASSWORD is required for a release build}"
 
           if [ -n "${CM_KEYSTORE_PATH:-}" ] && [ -f "${CM_KEYSTORE_PATH}" ]; then
             KEYSTORE_PATH="$CM_KEYSTORE_PATH"
-
           elif [ -n "${CM_KEYSTORE:-}" ]; then
             KEYSTORE_PATH="$CM_BUILD_DIR/codemagic.keystore"
-
             printf '%s' "$CM_KEYSTORE" | base64 --decode > "$KEYSTORE_PATH"
-
           else
-            echo "ERROR: Android keystore not found."
-            echo "Configure either CM_KEYSTORE_PATH or CM_KEYSTORE."
+            echo "ERROR: Provide CM_KEYSTORE_PATH to an uploaded keystore or base64 CM_KEYSTORE"
             exit 1
           fi
-
-          test -f "$KEYSTORE_PATH" || {
-            echo "ERROR: Keystore file does not exist: $KEYSTORE_PATH"
-            exit 1
-          }
-
-          echo "Keystore found."
 
           cat > android/key.properties <<EOF
           storePassword=$CM_KEYSTORE_PASSWORD
@@ -339,212 +156,73 @@ workflows:
           storeFile=$KEYSTORE_PATH
           EOF
 
-          chmod 600 android/key.properties
-
           python3 - <<'PYCODE'
           from pathlib import Path
           import re
-
-          candidates = [
-              Path("android/app/build.gradle.kts"),
-              Path("android/app/build.gradle")
-          ]
-
-          app = next(
-              (p for p in candidates if p.exists()),
-              None
-          )
-
+          candidates = [Path('android/app/build.gradle.kts'), Path('android/app/build.gradle')]
+          app = next((p for p in candidates if p.exists()), None)
           if app is None:
-              raise SystemExit(
-                  "ERROR: Android Gradle app file not found"
-              )
-
+              raise SystemExit('ERROR: Android Gradle app file not found')
           text = app.read_text()
-
-          if app.suffix == ".kts":
-
-              if "create(\"release\")" not in text:
-                  signing_block = r'''
+          if 'signingConfigs' not in text:
+              if app.suffix == '.kts':
+                  signing = """
               signingConfigs {
                   create("release") {
-                      val keystoreProperties = java.util.Properties()
-                      val keyPropertiesFile = rootProject.file("key.properties")
-
-                      if (!keyPropertiesFile.exists()) {
-                          throw GradleException("key.properties is missing")
-                      }
-
-                      keyPropertiesFile.inputStream().use {
-                          keystoreProperties.load(it)
-                      }
-
-                      keyAlias = keystoreProperties.getProperty("keyAlias")
-                      keyPassword = keystoreProperties.getProperty("keyPassword")
-                      storeFile = file(
-                          keystoreProperties.getProperty("storeFile")
-                      )
-                      storePassword = keystoreProperties.getProperty(
-                          "storePassword"
-                      )
+            val keystoreProperties = java.util.Properties()
+            val keyFile = rootProject.file("key.properties")
+            if (!keyFile.exists()) error("key.properties is missing")
+            keyFile.inputStream().use { keystoreProperties.load(it) }
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+            storeFile = file(keystoreProperties.getProperty("storeFile"))
+            storePassword = keystoreProperties.getProperty("storePassword")
                   }
               }
-          '''
-
-                  match = re.search(
-                      r"android\s*\{",
-                      text
-                  )
-
-                  if not match:
-                      raise SystemExit(
-                          "ERROR: android { block not found"
-                      )
-
-                  position = match.end()
-                  text = (
-                      text[:position]
-                      + signing_block
-                      + text[position:]
-                  )
-
-              release_pattern = (
-                  r'(buildTypes\s*\{'
-                  r'\s*release\s*\{)'
-              )
-
-              if "signingConfig = signingConfigs.getByName(\"release\")" not in text:
-                  new_text, count = re.subn(
-                      release_pattern,
-                      r'\1\n'
-                      '        signingConfig = '
-                      'signingConfigs.getByName("release")',
-                      text,
-                      count=1
-                  )
-
-                  if count != 1:
-                      raise SystemExit(
-                          "ERROR: release buildType not found in KTS"
-                      )
-
-                  text = new_text
-
-          else:
-
-              if "signingConfigs {" not in text or "release {" not in text:
-                  signing_block = r'''
+          """
+              else:
+                  signing = """
               signingConfigs {
                   release {
-                      def props = new Properties()
-                      def keyPropertiesFile =
-                          rootProject.file('key.properties')
-
-                      if (!keyPropertiesFile.exists()) {
-                          throw new GradleException(
-                              'key.properties is missing'
-                          )
-                      }
-
-                      keyPropertiesFile.withInputStream {
-                          props.load(it)
-                      }
-
-                      keyAlias props['keyAlias']
-                      keyPassword props['keyPassword']
-                      storeFile file(props['storeFile'])
-                      storePassword props['storePassword']
+            def props = new Properties()
+            def keyFile = rootProject.file('key.properties')
+            if (!keyFile.exists()) throw new GradleException('key.properties is missing')
+            keyFile.withInputStream { props.load(it) }
+            keyAlias props['keyAlias']
+            keyPassword props['keyPassword']
+            storeFile file(props['storeFile'])
+            storePassword props['storePassword']
                   }
               }
-          '''
-
-                  match = re.search(
-                      r"android\s*\{",
-                      text
-                  )
-
-                  if not match:
-                      raise SystemExit(
-                          "ERROR: android { block not found"
-                      )
-
-                  position = match.end()
-                  text = (
-                      text[:position]
-                      + signing_block
-                      + text[position:]
-                  )
-
-              release_pattern = (
-                  r'(buildTypes\s*\{'
-                  r'\s*release\s*\{)'
-              )
-
-              if "signingConfig signingConfigs.release" not in text:
-                  new_text, count = re.subn(
-                      release_pattern,
-                      r'\1\n'
-                      '        signingConfig signingConfigs.release',
-                      text,
-                      count=1
-                  )
-
-                  if count != 1:
-                      raise SystemExit(
-                          "ERROR: release buildType not found in Groovy"
-                      )
-
-                  text = new_text
-
-          app.write_text(text)
-
-          final_text = app.read_text()
-
-          if app.suffix == ".kts":
-              if "signingConfig = signingConfigs.getByName(\"release\")" not in final_text:
-                  raise SystemExit(
-                      "ERROR: KTS release signing was not configured"
-                  )
+          """
+          text = re.sub(r'(android\s*\{)', lambda m: m.group(1) + signing, text, count=1)
+          if app.suffix == '.kts':
+              text = re.sub(r'(buildTypes\s*\{\s*release\s*\{)', lambda m: m.group(1) + '\n            signingConfig = signingConfigs.getByName("release")', text, count=1)
           else:
-              if "signingConfig signingConfigs.release" not in final_text:
-                  raise SystemExit(
-                      "ERROR: Groovy release signing was not configured"
-                  )
-
-          print(
-              f"Release signing configured successfully in {app}"
-          )
+              text = re.sub(r'(buildTypes\s*\{\s*release\s*\{)', lambda m: m.group(1) + '\n            signingConfig signingConfigs.release', text, count=1)
+          if 'signingConfig' not in text:
+              raise SystemExit('ERROR: release signing configuration was not injected')
+          app.write_text(text)
+          print(f'Release signing configured in {app}')
           PYCODE
 
-          echo "Release signing configuration completed successfully."
-
       - name: Flutter pub get
-        script: |
-          set -euo pipefail
-          flutter pub get
+        script: flutter pub get
 
       - name: Analyze
-        script: |
-          set -euo pipefail
-          flutter analyze
+        script: flutter analyze
 
       - name: Test
-        script: |
-          set -euo pipefail
-          flutter test
+        script: flutter test
 
       - name: Build APK
         script: |
-          set -euo pipefail
-
           flutter build apk --release \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
       - name: Build AAB
         script: |
-          set -euo pipefail
-
           flutter build appbundle --release \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"

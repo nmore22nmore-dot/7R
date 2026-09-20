@@ -2741,11 +2741,193 @@ class _BlockedPageState extends State<BlockedPage> {
   }
 }
 
-class OfflinePage extends StatefulWidget { const OfflinePage({super.key}); @override State<OfflinePage> createState()=>_OfflinePageState(); }
-class _OfflinePageState extends State<OfflinePage>{ List<Map<String,dynamic>> items=[]; bool loading=true; @override void initState(){super.initState();load();} Future<void> load()async{final x=await OfflineStore.list();if(mounted)setState(() { items=x; loading=false; });} Future<void> remove(String id)async{await OfflineStore.remove(id);await load();} @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('المشاهدة دون اتصال'),actions:[IconButton(onPressed:load,icon:const Icon(Icons.refresh))]),body:loading?const Center(child:CircularProgressIndicator()):items.isEmpty?const Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.download_done_rounded,size:70,color:cyan),SizedBox(height:14),Text('لا توجد فيديوهات محفوظة بعد'),SizedBox(height:6),Text('اضغط «تنزيل» من أي منشور لحفظه هنا.',style:TextStyle(color:Colors.white54))])):ListView.separated(padding:const EdgeInsets.all(12),itemCount:items.length,separatorBuilder:(_,__)=>const SizedBox(height:8),itemBuilder:(_,i){final e=items[i];final video=e['type']=='video';return Card(color:panel,child:ListTile(leading:SizedBox(width:62,height:62,child:video?const DecoratedBox(decoration:BoxDecoration(color:Color(0xFF18202A)),child:Icon(Icons.play_circle_fill,size:34,color:cyan)):Image.file(File(e['path'].toString()),fit:BoxFit.cover,errorBuilder:(_,__,___)=>const Icon(Icons.image))),title:Text('@${e['username']??'N'}',style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((e['caption']??'').toString().isEmpty?'محتوى محفوظ محليًا':e['caption'].toString(),maxLines:2,overflow:TextOverflow.ellipsis),trailing:IconButton(onPressed:()=>remove(e['id'].toString()),icon:const Icon(Icons.delete_outline,color:Colors.redAccent)),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>OfflineViewerPage(item:e))));})]); }
+class OfflinePage extends StatefulWidget {
+  const OfflinePage({super.key});
+
+  @override
+  State<OfflinePage> createState() => _OfflinePageState();
 }
-class OfflineViewerPage extends StatefulWidget{final Map<String,dynamic> item;const OfflineViewerPage({super.key,required this.item});@override State<OfflineViewerPage> createState()=>_OfflineViewerPageState();}
-class _OfflineViewerPageState extends State<OfflineViewerPage>{VideoPlayerController? controller;@override void initState(){super.initState();if(widget.item['type']=='video'){controller=VideoPlayerController.file(File(widget.item['path'].toString()))..initialize().then((_){if(mounted){setState((){});controller!.setLooping(true);controller!.play();}});}}@override void dispose(){controller?.dispose();super.dispose();}@override Widget build(BuildContext c)=>Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:Text('@${widget.item['username']??'N'}')),body:Center(child:widget.item['type']=='video'?(controller?.value.isInitialized==true?AspectRatio(aspectRatio:controller!.value.aspectRatio,child:VideoPlayer(controller!)):const CircularProgressIndicator()):Image.file(File(widget.item['path'].toString()),fit:BoxFit.contain)));}
+
+class _OfflinePageState extends State<OfflinePage> {
+  List<Map<String, dynamic>> items = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final x = await OfflineStore.list();
+      if (mounted) {
+        setState(() {
+          items = x;
+          loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
+  Future<void> remove(String id) async {
+    await OfflineStore.remove(id);
+    await load();
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('المشاهدة دون اتصال'),
+        actions: [
+          IconButton(onPressed: load, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : items.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download_done_rounded, size: 70, color: cyan),
+                      SizedBox(height: 14),
+                      Text('لا توجد فيديوهات محفوظة بعد'),
+                      SizedBox(height: 6),
+                      Text(
+                        'اضغط «تنزيل» من أي منشور لحفظه هنا.',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final e = items[i];
+                    final video = e['type'] == 'video';
+                    final avatarPath = e['path']?.toString() ?? '';
+                    return Card(
+                      color: panel,
+                      child: ListTile(
+                        leading: SizedBox(
+                          width: 62,
+                          height: 62,
+                          child: video
+                              ? const DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF18202A),
+                                  ),
+                                  child: Icon(
+                                    Icons.play_circle_fill,
+                                    size: 34,
+                                    color: cyan,
+                                  ),
+                                )
+                              : Image.file(
+                                  File(avatarPath),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      const Icon(Icons.image),
+                                ),
+                        ),
+                        title: Text(
+                          '@${e['username'] ?? 'N'}',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(
+                          (e['caption'] ?? '').toString().isEmpty
+                              ? 'محتوى محفوظ محليًا'
+                              : e['caption'].toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: IconButton(
+                          onPressed: () => remove(e['id'].toString()),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                        onTap: () => Navigator.push(
+                          c,
+                          MaterialPageRoute(
+                            builder: (_) => OfflineViewerPage(item: e),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class OfflineViewerPage extends StatefulWidget {
+  final Map<String, dynamic> item;
+
+  const OfflineViewerPage({super.key, required this.item});
+
+  @override
+  State<OfflineViewerPage> createState() => _OfflineViewerPageState();
+}
+
+class _OfflineViewerPageState extends State<OfflineViewerPage> {
+  VideoPlayerController? controller;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.item['type'] == 'video') {
+      controller = VideoPlayerController.file(
+        File(widget.item['path'].toString()),
+      )
+        ..initialize().then((_) {
+          if (mounted) {
+            setState(() {});
+            controller!.setLooping(true);
+            controller!.play();
+          }
+        });
+    }
+  }
+
+  @override
+  void dispose() {
+    controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text('@${widget.item['username'] ?? 'N'}'),
+      ),
+      body: Center(
+        child: widget.item['type'] == 'video'
+            ? (controller?.value.isInitialized == true
+                ? AspectRatio(
+                    aspectRatio: controller!.value.aspectRatio,
+                    child: VideoPlayer(controller!),
+                  )
+                : const CircularProgressIndicator())
+            : Image.file(
+                File(widget.item['path'].toString()),
+                fit: BoxFit.contain,
+              ),
+      ),
+    );
+  }
+}
 
 class StudioPage extends StatelessWidget {
   const StudioPage({super.key});
@@ -2879,7 +3061,61 @@ class _WalletPageState extends State<WalletPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => showModalBottomSheet(context:c,builder:(_)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(14,16,14,24),child:Column(mainAxisSize:MainAxisSize.min,children:[const Text('شراء العملات',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),if(storeLoading)const Padding(padding:EdgeInsets.all(20),child:CircularProgressIndicator()) else if(!storeAvailable||products.isEmpty)const Padding(padding:EdgeInsets.all(20),child:Text('متجر Google Play غير متاح أو لم تتم إضافة منتجات العملات بعد.')) else ...products.map((p)=>Card(color:panel,child:ListTile(leading:const Icon(Icons.monetization_on,color:cyan),title:Text(p.title),subtitle:Text(p.description),trailing:FilledButton(onPressed:()=>_buy(p),child:Text(p.price))))),TextButton(onPressed:()=>_iap.restorePurchases(),child:const Text('استعادة عمليات الشراء'))]))),
+                  onPressed: () => showModalBottomSheet(
+                    context: c,
+                    builder: (_) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 16, 14, 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'شراء العملات',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (storeLoading)
+                              const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: CircularProgressIndicator(),
+                              )
+                            else if (!storeAvailable || products.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Text(
+                                  'متجر Google Play غير متاح أو لم تتم إضافة منتجات العملات بعد.',
+                                ),
+                              )
+                            else
+                              ...products.map(
+                                (p) => Card(
+                                  color: panel,
+                                  child: ListTile(
+                                    leading: const Icon(
+                                      Icons.monetization_on,
+                                      color: cyan,
+                                    ),
+                                    title: Text(p.title),
+                                    subtitle: Text(p.description),
+                                    trailing: FilledButton(
+                                      onPressed: () => _buy(p),
+                                      child: Text(p.price),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            TextButton(
+                              onPressed: () => _iap.restorePurchases(),
+                              child: const Text('استعادة عمليات الشراء'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   child: const Text('شراء العملات'),
                 ),
               ),
