@@ -11,6 +11,14 @@ workflows:
         FLUTTER_VERSION: stable
 
     scripts:
+      - name: Validate release environment
+        script: |
+          set -euo pipefail
+          test -n "${SUPABASE_URL:-}" || { echo "ERROR: SUPABASE_URL is missing"; exit 1; }
+          test -n "${SUPABASE_PUBLISHABLE_KEY:-}" || { echo "ERROR: SUPABASE_PUBLISHABLE_KEY is missing"; exit 1; }
+          test -f firebase/google-services.json || { echo "ERROR: firebase/google-services.json is missing"; exit 1; }
+          echo "Release environment validated"
+
       - name: Ensure Android project exists
         script: |
           if [ ! -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
@@ -40,23 +48,23 @@ workflows:
           if settings.suffix == ".kts":
               if "com.google.gms.google-services" not in st:
                   st = re.sub(
-                      r'(plugins\\s*\\{)',
-                      r'\\1\\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                      r'(plugins\s*\{)',
+                      r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false',
                       st, count=1)
           else:
               if "com.google.gms.google-services" not in st:
                   st = re.sub(
-                      r'(plugins\\s*\\{)',
-                      r'\\1\\n    id "com.google.gms.google-services" version "4.4.2" apply false',
+                      r'(plugins\s*\{)',
+                      r'\1\n    id "com.google.gms.google-services" version "4.4.2" apply false',
                       st, count=1)
           settings.write_text(st)
 
           ap = app.read_text()
           if "com.google.gms.google-services" not in ap:
               if app.suffix == ".kts":
-                  ap = re.sub(r'(plugins\\s*\\{)', r'\\1\\n    id("com.google.gms.google-services")', ap, count=1)
+                  ap = re.sub(r'(plugins\s*\{)', r'\1\n    id("com.google.gms.google-services")', ap, count=1)
               else:
-                  ap = re.sub(r'(plugins\\s*\\{)', r'\\1\\n    id "com.google.gms.google-services"', ap, count=1)
+                  ap = re.sub(r'(plugins\s*\{)', r'\1\n    id "com.google.gms.google-services"', ap, count=1)
           app.write_text(ap)
           print("Firebase Android configuration added")
           PYCODE
@@ -124,6 +132,80 @@ workflows:
 
           python3 -c 'from pathlib import Path; p=Path("android/app/src/main/AndroidManifest.xml"); s=p.read_text(); b="<intent-filter>\n                <action android:name=\"android.intent.action.VIEW\" />\n                <category android:name=\"android.intent.category.DEFAULT\" />\n                <category android:name=\"android.intent.category.BROWSABLE\" />\n                <data android:scheme=\"n\" android:host=\"auth-callback\" />\n            </intent-filter>"; p.write_text(s.replace("</activity>", b+"\n        </activity>", 1) if "android:scheme=\"n\"" not in s else s)'
 
+      - name: Configure release signing
+        script: |
+          set -euo pipefail
+          : "${CM_KEYSTORE_PASSWORD:?CM_KEYSTORE_PASSWORD is required for a release build}"
+          : "${CM_KEY_ALIAS:?CM_KEY_ALIAS is required for a release build}"
+          : "${CM_KEY_PASSWORD:?CM_KEY_PASSWORD is required for a release build}"
+
+          if [ -n "${CM_KEYSTORE_PATH:-}" ] && [ -f "${CM_KEYSTORE_PATH}" ]; then
+            KEYSTORE_PATH="$CM_KEYSTORE_PATH"
+          elif [ -n "${CM_KEYSTORE:-}" ]; then
+            KEYSTORE_PATH="$CM_BUILD_DIR/codemagic.keystore"
+            printf '%s' "$CM_KEYSTORE" | base64 --decode > "$KEYSTORE_PATH"
+          else
+            echo "ERROR: Provide CM_KEYSTORE_PATH to an uploaded keystore or base64 CM_KEYSTORE"
+            exit 1
+          fi
+
+          cat > android/key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$KEYSTORE_PATH
+          EOF
+
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import re
+          candidates = [Path('android/app/build.gradle.kts'), Path('android/app/build.gradle')]
+          app = next((p for p in candidates if p.exists()), None)
+          if app is None:
+              raise SystemExit('ERROR: Android Gradle app file not found')
+          text = app.read_text()
+          if 'signingConfigs' not in text:
+              if app.suffix == '.kts':
+                  signing = """
+              signingConfigs {
+                  create("release") {
+            val keystoreProperties = java.util.Properties()
+            val keyFile = rootProject.file("key.properties")
+            if (!keyFile.exists()) error("key.properties is missing")
+            keyFile.inputStream().use { keystoreProperties.load(it) }
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+            storeFile = file(keystoreProperties.getProperty("storeFile"))
+            storePassword = keystoreProperties.getProperty("storePassword")
+                  }
+              }
+          """
+              else:
+                  signing = """
+              signingConfigs {
+                  release {
+            def props = new Properties()
+            def keyFile = rootProject.file('key.properties')
+            if (!keyFile.exists()) throw new GradleException('key.properties is missing')
+            keyFile.withInputStream { props.load(it) }
+            keyAlias props['keyAlias']
+            keyPassword props['keyPassword']
+            storeFile file(props['storeFile'])
+            storePassword props['storePassword']
+                  }
+              }
+          """
+          text = re.sub(r'(android\s*\{)', lambda m: m.group(1) + signing, text, count=1)
+          if app.suffix == '.kts':
+              text = re.sub(r'(buildTypes\s*\{\s*release\s*\{)', lambda m: m.group(1) + '\n            signingConfig = signingConfigs.getByName("release")', text, count=1)
+          else:
+              text = re.sub(r'(buildTypes\s*\{\s*release\s*\{)', lambda m: m.group(1) + '\n            signingConfig signingConfigs.release', text, count=1)
+          if 'signingConfig' not in text:
+              raise SystemExit('ERROR: release signing configuration was not injected')
+          app.write_text(text)
+          print(f'Release signing configured in {app}')
+          PYCODE
+
       - name: Flutter pub get
         script: flutter pub get
 
@@ -139,6 +221,12 @@ workflows:
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
 
+      - name: Build AAB
+        script: |
+          flutter build appbundle --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
-      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/bundle/release/app-release.aab

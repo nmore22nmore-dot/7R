@@ -72,7 +72,8 @@ Deno.serve(async (req) => {
     const text = type === 'like' ? 'أعجب أحدهم بمحتواك' :
       type === 'comment' ? 'لديك تعليق جديد' :
       type === 'follow' ? 'بدأ شخص بمتابعتك' :
-      type === 'gift' ? 'وصلتك هدية جديدة' : 'لديك إشعار جديد';
+      type === 'gift' ? 'وصلتك هدية جديدة' :
+      type === 'message' ? 'وصلتك رسالة جديدة' : 'لديك إشعار جديد';
 
     let sent = 0;
     const invalid: string[] = [];

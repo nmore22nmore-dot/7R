@@ -1,25 +1,41 @@
-# N 5.2.0 repair notes
+# N final repair pass
 
-This build fixes the verified logic problems found during the app/schema audit:
+This pass converts several previously demonstrative areas into real Supabase-backed flows:
+- Feed visibility is delegated to the database RLS policy instead of client-side public filtering.
+- Added real Stories UI, upload, signed viewing URLs, expiry filtering, and private/block-aware storage policies.
+- Replaced the custom non-standard QR drawing with QR.Flutter.
+- Profile visitors and blocked users now resolve usernames/avatars instead of showing UUIDs.
+- N AI now calls the protected `ai-chat` Supabase Edge Function. Configure `OPENAI_API_KEY` (and optionally `OPENAI_MODEL`) as Supabase Edge Function secrets.
+- Post-media storage access now reuses `can_read_post`, including private/+21/block rules.
 
-- Removed the duplicate `_navItem` method and duplicate theme property.
-- Bottom navigation is now: الرئيسية / المتابعة / نشر / الرسائل / الملف الشخصي.
-- Following feed requests public + followers posts and relies on RLS for privacy/block/age enforcement.
-- Private-account visibility is enforced by database policy.
-- Blocked users are excluded from post visibility, follows, comments, conversations, messages and gifts.
-- Added birth date to signup and server-side 13+ validation.
-- Added +21 publishing flag and server-side 21+ read/write enforcement.
-- Notification preferences are respected by in-app notification triggers and the FCM Edge Function.
-- Message list resolves the other participant's username/avatar.
-- Gift RPC now validates the gift name/cost server-side and blocks forged prices.
-- Story visibility policy respects account privacy and blocks.
+Still provider-dependent: real live video streaming and real-money coin purchases require credentials/configuration for a live-stream/payment provider; the app must not pretend those are active without those credentials.
 
-## Still requiring external provider configuration
+## 5.3.0+57 Integration pass
+- Added real voice-message recording/upload/playback in chats using `record`, `path_provider`, and `audioplayers`.
+- Extended `messages.media_type` to support `voice`.
+- Added Supabase `live_rooms` metadata table and RLS.
+- Replaced hard-coded live-room list with live-room records from Supabase and profile data.
+- Live room can render a supplied external stream URL through `video_player`; an actual broadcaster/provider is still required to publish a stream.
+- Codemagic remains the authoritative Flutter analyze/test/build environment because this workspace does not contain the Flutter SDK.
 
-Some product systems cannot be completed from a source ZIP alone:
+## 5.4.0+58 hardening pass
+- Secured message read receipts behind `mark_conversation_read()` instead of allowing general message updates.
+- Added automatic in-app notification creation for new messages.
+- Added `message` push-notification text handling.
+- Secured N AI Edge Function with Supabase JWT validation before forwarding requests to the AI provider.
+- Removed duplicate `live_rooms` read-policy creation from the middle of the schema; the final block owns the block-aware policy.
+- Kept Google Play purchase verification server-side; the client never credits coins directly.
 
-- FCM Database Webhook: configure `notifications INSERT -> send-push` in Supabase.
-- FCM Edge Function secret: `FIREBASE_SERVICE_ACCOUNT_JSON` and the normal Supabase function secrets must be configured.
-- N AI requires a protected AI provider/Edge Function and its server secret.
-- Real-money coin purchases require Google Play Billing/product IDs and a verified payment backend.
-- Real live streaming requires a streaming provider/server (WebRTC/RTMP infrastructure); the existing Live UI is not a full streaming backend.
+External production configuration still required by the platform owner: Supabase Edge Function secrets, database webhook for `send-push`, Google Play products/service account, and a real live-stream provider/stream URL.
+
+## 5.4.0 release-build reliability pass
+- Fixed the Codemagic Firebase Gradle plugin injection regex (the previous expression was over-escaped).
+- Added explicit Supabase environment validation before build.
+- Added release APK and AAB builds as separate gates.
+- Added release signing configuration using Codemagic CM_KEYSTORE/CM_KEYSTORE_PATH and CM_* password variables.
+- Standardized the Android application/package identity to `com.n.n_app`, matching `firebase/google-services.json`.
+- Updated the Google Play verification function default package to `com.n.n_app`.
+- Added a GitHub Flutter CI workflow for `flutter analyze`, tests, APK and AAB builds.
+- Added repository ignores for generated Android signing files and Flutter build output.
+
+Important: external provider credentials and store configuration remain required. No source-code change can manufacture valid Supabase, Firebase, Google Play, OpenAI, or live-stream credentials.

@@ -1,26 +1,29 @@
-N 5.1.0 FINAL DESIGN RELEASE
+N 5.3.0 final-repair baseline
 
-- Updated the internal UI to the requested dark social-video design reference.
-- Added rounded floating bottom navigation with Home, Friends, Create, Live, and Profile.
-- Refined home/feed controls, live area, publish screen, messages, profile, settings, notifications, wallet/gifts and utility pages.
-- Preserved Supabase authentication, posts, follows, comments, storage and messaging flows from the supplied project.
-- Preserved the N app name and supplied branding assets.
-- Codemagic remains configured to generate the Android host project, run flutter analyze/tests, and build the release APK.
-- Required Codemagic group variables: SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.
-- Android auth callback: n://auth-callback.
-- The packaging environment used here does not include Flutter SDK, so a local flutter analyze/build could not be executed here. Codemagic is configured to perform those gates.
+This archive is the repaired source baseline for Codemagic.
+Flutter SDK is not installed in the analysis container, so flutter analyze/test/build were not executed locally.
+Codemagic is configured to run pub get, analyze, tests, and release APK build.
 
-- 5.2.0: connected previously empty actions: live options/watch, profile share, account/security/about, activity, profile visitors, blocking, creator studio, wallet/gifts, notification loading/mark-read, QR sharing, and RTL home feed.
-- Added Supabase tables/policies/functions/triggers for profile views, blocked users, gift transactions, and automatic like/follow/comment/gift notifications.
-- Store purchase remains intentionally gated behind a real payment provider; its button now explains the requirement instead of doing nothing.
-- N AI remains a UI placeholder until an Edge Function/provider is configured; its send action is connected to a clear response.
+Major repairs in this pass:
+- Supabase RLS is the source of truth for feed visibility.
+- Real 24-hour Stories upload/view flow with private storage and image/video support.
+- Real QR generation via qr_flutter.
+- Profile visitor and blocked-user screens resolve profile data.
+- N AI calls a protected Supabase Edge Function (requires OPENAI_API_KEY secret).
+- Post-media storage access now follows the same post visibility/+21/block rules.
 
-Firebase Cloud Messaging integration (2026-09-20):
-- Firebase project: rbe-ed3c0 (7RBE)
-- Android package: com.n.n_app
-- google-services.json is stored at firebase/google-services.json and copied into android/app during Codemagic.
-- firebase_core and firebase_messaging are initialized at startup; Android notification permission is requested.
-- Do not place Firebase service-account private keys in the app. Server-side FCM sending should be added later through a secure backend/Edge Function.
-- FCM push token registration added: authenticated devices store tokens in public.push_tokens.
-- Added Supabase Edge Function supabase/functions/send-push for Firebase HTTP v1 delivery using FIREBASE_SERVICE_ACCOUNT_JSON.
-- Database webhook still needs to be configured once: notifications INSERT -> send-push Edge Function.
+5.4.0 integration additions:
+- Offline video/image downloads are stored in the app documents directory and exposed in "المشاهدة دون اتصال".
+- Live rooms now have persistent comments, realtime comment refresh, viewer counting, host end-live action, and one-active-room-per-host protection.
+- Messages now have read receipts/unread badges.
+- Coin recharge is wired to Google Play Billing product IDs: n_coins_100, n_coins_550, n_coins_1200, n_coins_2600, n_coins_7000.
+- Supabase Edge Function verify-purchase verifies Android purchases with Google Play and credits coins atomically.
+External production configuration still required (not a code/build step): deploy the verify-purchase Edge Function, set GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_PLAY_PACKAGE_NAME, create the matching Play Console products, set OPENAI_API_KEY for N AI, and provide an actual live streaming provider URL/SDK for broadcaster ingestion. These are service credentials/store/provider configuration, not missing Flutter feature code.
+
+
+5.4.0 production-hardening pass:
+- Protected profile admin/verified fields with server trigger.
+- Prevented underage users from changing posts into +21 content.
+- Added server-side coin product/amount validation.
+- Reworked live viewer accounting to track room/user sessions and prevent arbitrary viewer-count decrements.
+- Updated in-app About version to 5.4.0.

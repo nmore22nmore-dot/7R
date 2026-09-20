@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 final sb = Supabase.instance.client;
 
@@ -92,6 +98,31 @@ String _storagePath(String value, String bucket) {
   return value;
 }
 
+
+class OfflineStore {
+  static Future<Directory> _dir() async {
+    final root = await getApplicationDocumentsDirectory();
+    final dir = Directory('${root.path}/n_offline');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+  static Future<File> _indexFile() async { final dir = await _dir(); return File('${dir.path}/index.json'); }
+  static Future<List<Map<String,dynamic>>> list() async {
+    try { final f=await _indexFile(); if(!await f.exists()) return []; final raw=jsonDecode(await f.readAsString()); if(raw is! List)return []; return raw.map((e)=>Map<String,dynamic>.from(e as Map)).where((e)=>File(e['path'].toString()).existsSync()).toList(); } catch(_){return [];}
+  }
+  static Future<void> _write(List<Map<String,dynamic>> items) async { final f=await _indexFile(); await f.writeAsString(jsonEncode(items)); }
+  static Future<Map<String,dynamic>> download({required String id,required String url,required String type,String caption='',String username='N'}) async {
+    final dir=await _dir(); final ext=type=='video'?'mp4':'jpg'; final file=File('${dir.path}/$id.$ext');
+    if(!await file.exists()) { final client=HttpClient(); try { final request=await client.getUrl(Uri.parse(url)); final response=await request.close(); if(response.statusCode<200||response.statusCode>=300)throw Exception('HTTP ${response.statusCode}'); final sink=file.openWrite(); await response.pipe(sink); await sink.close(); } finally { client.close(force:true); } }
+    final item={'id':id,'path':file.path,'type':type,'caption':caption,'username':username,'saved_at':DateTime.now().toIso8601String()}; final items=await list(); items.removeWhere((e)=>e['id'].toString()==id); items.insert(0,item); await _write(items); return item;
+  }
+  static Future<void> remove(String id) async { final items=await list(); for(final e in items.where((e)=>e['id'].toString()==id)){try{await File(e['path'].toString()).delete();}catch(_){}} items.removeWhere((e)=>e['id'].toString()==id); await _write(items); }
+}
+Future<void> _downloadPost(BuildContext context, Map<String,dynamic> post) async {
+  final id=post['id']?.toString(), url=post['media_url']?.toString()??'', type=post['media_type']?.toString()??'video'; if(id==null||id.isEmpty||url.isEmpty)return;
+  try { await OfflineStore.download(id:id,url:url,type:type,caption:post['caption']?.toString()??'',username:post['profile']?['username']?.toString()??'N'); if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تنزيل المحتوى للمشاهدة دون اتصال.'))); } catch(e){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تنزيل المحتوى: $e')));}
+}
+
 Future<String?> _signedPostUrl(String value) async {
   if (value.isEmpty) return null;
   try {
@@ -109,10 +140,10 @@ Future<List<Map<String, dynamic>>> loadPostsWithProfiles({required bool followin
     final follows = await sb.from('follows').select('following_id').eq('follower_id', user.id);
     final ids = List<Map<String, dynamic>>.from(follows).map((r) => r['following_id'].toString()).toList();
     if (ids.isEmpty) return [];
-    query = query.inFilter('user_id', ids).inFilter('visibility', ['public', 'followers']);
-  } else {
-    query = query.eq('visibility', 'public');
+    query = query.inFilter('user_id', ids);
   }
+  // Do not filter visibility here. Supabase RLS (can_read_post) is the single
+  // source of truth for public/private/followers/+21/block rules.
   final raw = await query.order('created_at', ascending: false).limit(50);
   final rows = List<Map<String, dynamic>>.from(raw);
   if (rows.isEmpty) return rows;
@@ -976,6 +1007,124 @@ class FollowingPage extends StatelessWidget {
   }
 }
 
+
+class StoryStrip extends StatefulWidget {
+  const StoryStrip({super.key});
+  @override State<StoryStrip> createState() => _StoryStripState();
+}
+
+class _StoryStripState extends State<StoryStrip> {
+  List<Map<String, dynamic>> stories = [];
+  bool loading = true;
+
+  @override
+  void initState() { super.initState(); load(); }
+
+  Future<void> load() async {
+    try {
+      final r = await sb.from('stories').select('id,user_id,media_url,expires_at').gt('expires_at', DateTime.now().toUtc().toIso8601String()).order('created_at', ascending: false).limit(30);
+      final rows = List<Map<String, dynamic>>.from(r);
+      final ids = rows.map((x) => x['user_id'].toString()).toSet().toList();
+      if (ids.isNotEmpty) {
+        final p = await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
+        final byId = <String, Map<String, dynamic>>{for (final x in List<Map<String, dynamic>>.from(p)) x['id'].toString(): x};
+        for (final x in rows) x['_profile'] = byId[x['user_id'].toString()];
+      }
+      if (mounted) setState(() { stories = rows; loading = false; });
+    } catch (_) { if (mounted) setState(() => loading = false); }
+  }
+
+  Future<void> addStory() async {
+    final source = await showModalBottomSheet<String>(context: context, builder: (c) => SafeArea(child: Wrap(children: [
+      ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('صورة'), onTap: () => Navigator.pop(c, 'image')),
+      ListTile(leading: const Icon(Icons.video_library_outlined), title: const Text('فيديو'), onTap: () => Navigator.pop(c, 'video')),
+    ])));
+    if (source == null) return;
+    final picked = source == 'image'
+        ? await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 88)
+        : await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (picked == null) return;
+    final u = sb.auth.currentUser;
+    if (u == null) return;
+    try {
+      final ext = picked.name.split('.').last.toLowerCase();
+      final path = '${u.id}/${DateTime.now().microsecondsSinceEpoch}.$ext';
+      await sb.storage.from('story-media').upload(path, File(picked.path), fileOptions: FileOptions(contentType: _mimeForExtension(ext), upsert: false));
+      await sb.from('stories').insert({'user_id': u.id, 'media_url': path, 'media_type': source, 'expires_at': DateTime.now().toUtc().add(const Duration(hours: 24)).toIso8601String()});
+      await load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر نشر القصة: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const SizedBox.shrink();
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      itemCount: stories.length + 1,
+      separatorBuilder: (_, __) => const SizedBox(width: 10),
+      itemBuilder: (_, i) {
+        if (i == 0) return GestureDetector(onTap: addStory, child: _storyBubble(null, 'قصتي', true));
+        final x = stories[i - 1];
+        return GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => StoryViewerPage(stories: stories, initialIndex: i - 1))), child: _storyBubble(x, (x['_profile']?['username'] ?? 'N').toString(), false));
+      },
+    );
+  }
+
+  Widget _storyBubble(Map<String, dynamic>? x, String label, bool add) {
+    final avatar = (x?['_profile']?['avatar_url'] ?? '').toString();
+    return SizedBox(width: 66, child: Column(children: [
+      Container(width: 58, height: 58, padding: const EdgeInsets.all(2), decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [cyan, pink])), child: CircleAvatar(backgroundColor: panel, backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null, child: avatar.isEmpty ? Icon(add ? Icons.add : Icons.person, color: Colors.white) : null)),
+      const SizedBox(height: 4), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+    ]));
+  }
+}
+
+class StoryViewerPage extends StatefulWidget {
+  final List<Map<String, dynamic>> stories;
+  final int initialIndex;
+  const StoryViewerPage({super.key, required this.stories, required this.initialIndex});
+  @override State<StoryViewerPage> createState() => _StoryViewerPageState();
+}
+
+class _StoryViewerPageState extends State<StoryViewerPage> {
+  late int index = widget.initialIndex;
+  String? url;
+  VideoPlayerController? video;
+
+  @override void initState() { super.initState(); load(); }
+  Future<void> load() async {
+    final raw = (widget.stories[index]['media_url'] ?? '').toString();
+    try {
+      final signed = await sb.storage.from('story-media').createSignedUrl(_storagePath(raw, 'story-media'), 3600);
+      if (!mounted) return;
+      if ((widget.stories[index]['media_type'] ?? 'image') == 'video') {
+        final vc = VideoPlayerController.networkUrl(Uri.parse(signed));
+        await vc.initialize();
+        await vc.setLooping(true);
+        await vc.play();
+        if (!mounted) { await vc.dispose(); return; }
+        setState(() { video?.dispose(); video = vc; url = signed; });
+      } else {
+        setState(() => url = signed);
+      }
+    } catch (_) {}
+  }
+  void next() { if (index < widget.stories.length - 1) { setState(() { index++; url = null; }); load(); } else Navigator.pop(context); }
+  void prev() { if (index > 0) { setState(() { index--; url = null; }); load(); } }
+
+  @override void dispose() { video?.dispose(); super.dispose(); }
+
+  @override Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, body: GestureDetector(onTapUp: (d) => d.localPosition.dx < MediaQuery.of(context).size.width / 2 ? prev() : next(), child: Stack(fit: StackFit.expand, children: [
+    if (video?.value.isInitialized == true) FittedBox(fit: BoxFit.contain, child: SizedBox(width: video!.value.size.width, height: video!.value.size.height, child: VideoPlayer(video!)))
+    else if (url != null) Image.network(url!, fit: BoxFit.contain) else const Center(child: CircularProgressIndicator()),
+    SafeArea(child: Padding(padding: const EdgeInsets.all(12), child: Align(alignment: Alignment.topCenter, child: LinearProgressIndicator(value: (index + 1) / widget.stories.length, minHeight: 3)))),
+    SafeArea(child: Align(alignment: Alignment.topRight, child: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white, size: 30)))),
+  ])));
+}
+
 class FeedPage extends StatefulWidget {
   final bool following;
   const FeedPage({super.key, required this.following});
@@ -1012,6 +1161,7 @@ class _FeedPageState extends State<FeedPage> {
         const Spacer(),
         _roundTopButton(Icons.chat_bubble_outline_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage()))),
       ]))),
+      const Positioned(left: 0, right: 0, top: 82, height: 86, child: StoryStrip()),
     ])));
   }
 }
@@ -1141,6 +1291,7 @@ class _VideoCardState extends State<VideoCard> {
       _action(liked?Icons.favorite:Icons.favorite_border, '$likes', like, active:liked),
       _action(Icons.comment_outlined, 'تعليق', () => showComments(context, widget.post['id'])),
       _action(saved?Icons.bookmark:Icons.bookmark_border, 'حفظ', save, active:saved),
+      _action(Icons.download_outlined, 'تنزيل', () => _downloadPost(context, widget.post)),
       _action(Icons.share_outlined, 'مشاركة', () => showShare(context, postId: widget.post['id']?.toString())),
     ])),
     Positioned(left:14,right:82,bottom:24,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
@@ -1286,63 +1437,68 @@ Future<void> showComments(
   ctrl.dispose();
 }
 
-class LivePage extends StatelessWidget {
+class LivePage extends StatefulWidget {
   const LivePage({super.key});
+  @override State<LivePage> createState() => _LivePageState();
+}
+
+class _LivePageState extends State<LivePage> {
+  List<Map<String, dynamic>> rooms = [];
+  bool loading = true;
+
+  @override
+  void initState() { super.initState(); loadRooms(); }
+
+  Future<void> loadRooms() async {
+    try {
+      final data = await sb.from('live_rooms').select('id,host_id,title,stream_url,viewer_count,created_at').eq('status','live').order('created_at', ascending: false);
+      final list = List<Map<String,dynamic>>.from(data);
+      final ids = list.map((e) => e['host_id'].toString()).toSet().toList();
+      final profiles = ids.isEmpty ? <dynamic>[] : await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
+      final byId = {for (final p in List<Map<String,dynamic>>.from(profiles)) p['id'].toString(): p};
+      for (final r in list) r['_profile'] = byId[r['host_id'].toString()];
+      if (mounted) setState(() { rooms = list; loading = false; });
+    } catch (e) {
+      if (mounted) { setState(() => loading = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحميل البثوث: $e'))); }
+    }
+  }
+
+  Future<void> createRoom() async {
+    final u = sb.auth.currentUser;
+    if (u == null) return;
+    final title = TextEditingController(text: 'بث مباشر N');
+    final url = TextEditingController();
+    final result = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('بدء بث مباشر'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: title, decoration: const InputDecoration(labelText: 'عنوان البث')),
+        TextField(controller: url, decoration: const InputDecoration(labelText: 'رابط البث (من مزود البث)')),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx,false), child: const Text('إلغاء')), FilledButton(onPressed: () => Navigator.pop(ctx,true), child: const Text('بدء'))],
+    ));
+    if (result != true) return;
+    try {
+      await sb.from('live_rooms').insert({'host_id':u.id,'title':title.text.trim().isEmpty?'بث مباشر N':title.text.trim(),'stream_url':url.text.trim().isEmpty?null:url.text.trim(),'status':'live'});
+      await loadRooms();
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر إنشاء البث: $e'))); }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final rooms = const [
-      ['سجاد', '12.5K', Icons.person],
-      ['أحمد', '8.7K', Icons.person_outline],
-      ['نور', '11.2K', Icons.person_2_outlined],
-      ['فاطمة', '7.3K', Icons.face_3_outlined],
-      ['علي', '10.2K', Icons.person_rounded],
-    ];
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        title: const Text('البث المباشر', style: TextStyle(fontWeight: FontWeight.w900)),
-        actions: [
-          IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage())), icon: const Icon(Icons.search_rounded)),
-          IconButton(onPressed: () => showModalBottomSheet<void>(context: context, builder: (ctx) => SafeArea(child: Wrap(children: [ListTile(leading: const Icon(Icons.refresh), title: const Text('تحديث البثوث'), onTap: () => Navigator.pop(ctx)), ListTile(leading: const Icon(Icons.report_outlined), title: const Text('الإبلاغ عن بث'), onTap: () { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختر البث الذي تريد الإبلاغ عنه.'))); }), ListTile(leading: const Icon(Icons.close), title: const Text('إغلاق'), onTap: () => Navigator.pop(ctx))]))), icon: const Icon(Icons.more_horiz_rounded)),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 110),
-        children: [
-          Container(
-            height: 190,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft, colors: [Color(0xFF132A35), Color(0xFF210A15)]),
-              border: Border.all(color: const Color(0xFF203A46)),
-            ),
-            child: Stack(children: [
-              const Positioned.fill(child: Center(child: Icon(Icons.sensors_rounded, size: 58, color: cyan))),
-              Positioned(top: 12, right: 12, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: pink, borderRadius: BorderRadius.circular(18)), child: const Text('مباشر الآن', style: TextStyle(fontWeight: FontWeight.w900)))),
-              const Positioned(bottom: 16, right: 16, left: 16, child: Text('اكتشف البثوث المباشرة الجديدة', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
-            ]),
-          ),
-          const SizedBox(height: 18),
-          const Row(children: [
-            Text('البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            Spacer(),
-            Text('الكل', style: TextStyle(color: cyan, fontWeight: FontWeight.w800)),
-          ]),
-          const SizedBox(height: 10),
-          ...rooms.map((r) => Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(color: const Color(0xFF0E1219), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF1D2832))),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              leading: Stack(children: [CircleAvatar(radius: 27, backgroundColor: const Color(0xFF26313B), child: Icon(r[2] as IconData, color: Colors.white70)), Positioned(bottom: 0, right: 0, child: Container(width: 12, height: 12, decoration: BoxDecoration(color: pink, shape: BoxShape.circle, border: Border.all(color: bg, width: 2))))]),
-              title: Text('@${r[0]}', style: const TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text('في البث الآن • ${r[1]} مشاهد', style: const TextStyle(color: Colors.white60, fontSize: 11)),
-              trailing: FilledButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LiveRoomPage(username: r[0] as String, viewers: r[1] as String))), style: FilledButton.styleFrom(backgroundColor: pink, minimumSize: const Size(72, 38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('مشاهدة', style: TextStyle(fontWeight: FontWeight.w800))),
-            ),
-          )),
-        ],
-      ),
+      appBar: AppBar(title: const Text('البث المباشر', style: TextStyle(fontWeight: FontWeight.w900)), actions: [IconButton(onPressed: loadRooms, icon: const Icon(Icons.refresh_rounded))]),
+      floatingActionButton: FloatingActionButton.extended(onPressed: createRoom, backgroundColor: pink, icon: const Icon(Icons.sensors), label: const Text('ابدأ بثًا')),
+      body: loading ? const Center(child: CircularProgressIndicator()) : rooms.isEmpty ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: const [Icon(Icons.sensors_off_rounded,size:64,color:Colors.white38),SizedBox(height:12),Text('لا توجد بثوث مباشرة الآن'),SizedBox(height:6),Text('يمكنك بدء بث وربطه بمزود البث الخارجي.',style:TextStyle(color:Colors.white54))])) : ListView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 100), itemCount: rooms.length, itemBuilder: (_,i) {
+          final r=rooms[i]; final p=r['_profile'] as Map<String,dynamic>?; final name=(p?['username']??'مستخدم').toString(); final avatar=(p?['avatar_url']??'').toString();
+          return Card(color: panel, child: ListTile(
+            leading: CircleAvatar(backgroundImage: avatar.isNotEmpty?NetworkImage(avatar):null, child: avatar.isEmpty?const Icon(Icons.person):null),
+            title: Text(r['title']?.toString()??'بث مباشر N',style:const TextStyle(fontWeight:FontWeight.w800)),
+            subtitle: Text('@$name • ${r['viewer_count']??0} مشاهد'),
+            trailing: FilledButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LiveRoomPage(roomId:r['id'].toString(), hostId:r['host_id'].toString(), username:name, viewers:'${r['viewer_count']??0}', streamUrl:r['stream_url']?.toString()))), child: const Text('مشاهدة')),
+          ));
+        }),
     );
   }
 }
@@ -1578,6 +1734,7 @@ class _MessagesPageState extends State<MessagesPage> {
         final profile = byId[other];
         row['_other_username'] = profile?['username'] ?? 'مستخدم';
         row['_other_avatar'] = profile?['avatar_url'];
+        try { final unread=await sb.from('messages').select('id').eq('conversation_id',row['id']).neq('sender_id',user.id).isFilter('read_at',null); row['_unread']=List.from(unread).length; } catch (_) { row['_unread']=0; }
       }
       if (mounted) setState(() => rows = rawRows);
     } catch (_) {}
@@ -1593,7 +1750,7 @@ class _MessagesPageState extends State<MessagesPage> {
         if (rows.isEmpty) const Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.chat_bubble_outline_rounded, size: 54, color: Colors.white38), SizedBox(height: 12), Text('لا توجد محادثات بعد', style: TextStyle(color: Colors.white70))])))
         else Expanded(child: ListView.separated(padding: const EdgeInsets.fromLTRB(10, 4, 10, 110), itemCount: rows.length, separatorBuilder: (_,__) => const Divider(height: 1, indent: 74), itemBuilder: (_, i) {
           final e = rows[i];
-          return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), leading: CircleAvatar(radius: 25, backgroundColor: const Color(0xFF1B252D), backgroundImage: (e['_other_avatar'] ?? '').toString().isNotEmpty ? NetworkImage(e['_other_avatar'].toString()) : null, child: (e['_other_avatar'] ?? '').toString().isEmpty ? const Icon(Icons.person_outline_rounded) : null), title: Text(e['_other_username'] ?? e['title'] ?? 'محادثة', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(e['last_message'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white60)), trailing: const Icon(Icons.chevron_left_rounded, color: Colors.white38), onTap: () => ChatPage.open(context, e['id']));
+          return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), leading: CircleAvatar(radius: 25, backgroundColor: const Color(0xFF1B252D), backgroundImage: (e['_other_avatar'] ?? '').toString().isNotEmpty ? NetworkImage(e['_other_avatar'].toString()) : null, child: (e['_other_avatar'] ?? '').toString().isEmpty ? const Icon(Icons.person_outline_rounded) : null), title: Row(children: [Expanded(child: Text(e['_other_username'] ?? e['title'] ?? 'محادثة', style: const TextStyle(fontWeight: FontWeight.w800))), if ((e['_unread'] ?? 0) > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: pink, borderRadius: BorderRadius.circular(12)), child: Text('${e['_unread']}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900))) ]), subtitle: Text(e['last_message'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white60)), trailing: const Icon(Icons.chevron_left_rounded, color: Colors.white38), onTap: () => ChatPage.open(context, e['id']));
         }))
       ]),
     );
@@ -1633,6 +1790,10 @@ class _ChatPageState extends State<ChatPage> {
   bool sending = false;
   Timer? _messageRefreshTimer;
   RealtimeChannel? _channel;
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _recordingVoice = false;
+  String? _playingVoice;
 
   @override
   void initState() {
@@ -1654,9 +1815,9 @@ class _ChatPageState extends State<ChatPage> {
           .eq('conversation_id', widget.id)
           .order('created_at');
       final next = List<Map<String, dynamic>>.from(x);
-      if (mounted) {
-        setState(() => msgs = next);
-      }
+      final me=sb.auth.currentUser?.id;
+      if(me!=null){try{await sb.rpc('mark_conversation_read',params:{'p_conversation':widget.id.toString()});}catch(_){}}
+      if (mounted) setState(() => msgs = next);
     } catch (e) {
       if (mounted && !silent) _showError('تعذر تحميل الرسائل: $e');
     }
@@ -1683,6 +1844,57 @@ class _ChatPageState extends State<ChatPage> {
       if (mounted) setState(() => attachment = picked);
     } catch (e) {
       if (mounted) _showError('تعذر اختيار الملف: $e');
+    }
+  }
+
+  Future<void> toggleVoiceRecording() async {
+    if (sending) return;
+    if (_recordingVoice) {
+      try {
+        final path = await _recorder.stop();
+        if (mounted) setState(() => _recordingVoice = false);
+        if (path == null || path.isEmpty) return;
+        final user = sb.auth.currentUser;
+        if (user == null) return;
+        final conversation = widget.id.toString();
+        final stamp = DateTime.now().microsecondsSinceEpoch;
+        final storagePath = '${user.id}/$conversation/$stamp.m4a';
+        if (mounted) setState(() => sending = true);
+        await sb.storage.from('message-media').upload(
+          storagePath,
+          File(path),
+          fileOptions: const FileOptions(contentType: 'audio/mp4', upsert: false),
+        );
+        await sb.from('messages').insert({
+          'conversation_id': widget.id,
+          'sender_id': user.id,
+          'body': '',
+          'media_url': storagePath,
+          'media_type': 'voice',
+          'media_name': 'رسالة صوتية',
+          'media_size': await File(path).length(),
+        });
+        try { await File(path).delete(); } catch (_) {}
+        await load();
+      } catch (e) {
+        if (mounted) _showError('تعذر إرسال الرسالة الصوتية: $e');
+      } finally {
+        if (mounted) setState(() => sending = false);
+      }
+      return;
+    }
+    try {
+      final allowed = await _recorder.hasPermission();
+      if (!allowed) {
+        _showError('اسمح للتطبيق باستخدام الميكروفون لإرسال رسالة صوتية.');
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/n_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
+      await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000, sampleRate: 44100), path: path);
+      if (mounted) setState(() => _recordingVoice = true);
+    } catch (e) {
+      _showError('تعذر بدء التسجيل الصوتي: $e');
     }
   }
 
@@ -1770,6 +1982,8 @@ class _ChatPageState extends State<ChatPage> {
   void dispose() {
     _messageRefreshTimer?.cancel();
     if (_channel != null) sb.removeChannel(_channel!);
+    _audioPlayer.dispose();
+    _recorder.dispose();
     ctrl.dispose();
     super.dispose();
   }
@@ -1783,6 +1997,38 @@ class _ChatPageState extends State<ChatPage> {
     if (url.isEmpty) return const SizedBox.shrink();
     final type = (m['media_type'] ?? 'file').toString();
     final name = (m['media_name'] ?? 'ملف مرفق').toString();
+    if (type == 'voice') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 7),
+        child: FutureBuilder<String?>(
+          future: _signedMessageUrl(url),
+          builder: (_, snap) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: const Color(0xFF1A2029), borderRadius: BorderRadius.circular(12)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: snap.hasData ? () async {
+                  try {
+                    if (_playingVoice == url) {
+                      await _audioPlayer.stop();
+                      if (mounted) setState(() => _playingVoice = null);
+                    } else {
+                      await _audioPlayer.stop();
+                      await _audioPlayer.play(UrlSource(snap.data!));
+                      if (mounted) setState(() => _playingVoice = url);
+                      _audioPlayer.onPlayerComplete.first.then((_) { if (mounted && _playingVoice == url) setState(() => _playingVoice = null); });
+                    }
+                  } catch (_) { _showError('تعذر تشغيل الرسالة الصوتية.'); }
+                } : null,
+                icon: Icon(_playingVoice == url ? Icons.stop_circle : Icons.play_circle_fill, color: cyan, size: 30),
+              ),
+              const Text('رسالة صوتية'),
+            ]),
+          ),
+        ),
+      );
+    }
     if (type == 'image') {
       return Padding(
         padding: const EdgeInsets.only(bottom: 7),
@@ -1869,8 +2115,9 @@ class _ChatPageState extends State<ChatPage> {
             child: Row(
               children: [
                 IconButton(onPressed: sending ? null : pickAttachment, icon: const Icon(Icons.attach_file)),
-                Expanded(child: TextField(controller: ctrl, enabled: !sending, decoration: const InputDecoration(hintText: 'اكتب رسالة...', border: InputBorder.none))),
-                IconButton(onPressed: sending ? null : send, icon: const Icon(Icons.send)),
+                Expanded(child: TextField(controller: ctrl, enabled: !sending && !_recordingVoice, decoration: InputDecoration(hintText: _recordingVoice ? 'جارٍ التسجيل... اضغط الميكروفون للإرسال' : 'اكتب رسالة...', border: InputBorder.none))),
+                IconButton(onPressed: sending ? null : toggleVoiceRecording, icon: Icon(_recordingVoice ? Icons.stop_circle : Icons.mic_rounded, color: _recordingVoice ? pink : null)),
+                IconButton(onPressed: sending || _recordingVoice ? null : send, icon: const Icon(Icons.send)),
               ],
             ),
           ),
@@ -2037,7 +2284,7 @@ class SettingsPage extends StatelessWidget {
         _section('الخصوصية'),
         _item(context, Icons.lock_outline, 'الخصوصية', 'الحساب الخاص والتحكم بالمحتوى', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPage()))),
         _section('N'),
-        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.1.0', () => showAboutDialog(context: context, applicationName: 'N', applicationVersion: '5.1.0', applicationLegalese: 'N Social Platform')), 
+        _item(context, Icons.info_outline, 'حول N', 'الإصدار 5.4.0', () => showAboutDialog(context: context, applicationName: 'N', applicationVersion: '5.4.0', applicationLegalese: 'N Social Platform')), 
         ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)), onTap: () async { await sb.auth.signOut(); if (context.mounted) Navigator.popUntil(context, (r) => r.isFirst); }),
       ]),
     );
@@ -2047,23 +2294,16 @@ class SettingsPage extends StatelessWidget {
   Widget _item(BuildContext context, IconData icon, String title, String sub, VoidCallback tap) => Container(margin: const EdgeInsets.only(bottom: 6), decoration: BoxDecoration(color: const Color(0xFF0F131A), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF1E2730))), child: ListTile(onTap: tap, leading: Icon(icon, size: 22), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(sub, style: const TextStyle(fontSize: 10.5, color: Colors.white54)), trailing: const Icon(Icons.chevron_left_rounded, color: Colors.white38)));
 }
 
-class LiveRoomPage extends StatefulWidget {
-  final String username;
-  final String viewers;
-  const LiveRoomPage({super.key, required this.username, required this.viewers});
-  @override State<LiveRoomPage> createState() => _LiveRoomPageState();
-}
-class _LiveRoomPageState extends State<LiveRoomPage> {
-  final ctrl = TextEditingController();
-  final comments = <String>[];
-  @override void dispose(){ ctrl.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context)=>Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:Text('@${widget.username} • مباشر')),body:Stack(children:[
-    const Positioned.fill(child: DecoratedBox(decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF122530),Colors.black])))),
-    Positioned(top:18,right:14,child:Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:6),decoration:BoxDecoration(color:pink,borderRadius:BorderRadius.circular(18)),child:Text('${widget.viewers} مشاهد'))),
-    const Center(child:Icon(Icons.sensors_rounded,size:92,color:cyan)),
-    Positioned(left:14,right:14,bottom:82,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:comments.take(6).map((e)=>Padding(padding:const EdgeInsets.only(bottom:5),child:Text(e,style:const TextStyle(fontWeight:FontWeight.w700,shadows:[Shadow(blurRadius:4,color:Colors.black)])))).toList())),
-    Positioned(left:10,right:10,bottom:10,child:Row(children:[Expanded(child:TextField(controller:ctrl,decoration:const InputDecoration(hintText:'اكتب تعليقًا...',filled:true,fillColor:Color(0xAA151922)))),const SizedBox(width:6),IconButton(onPressed:(){final t=ctrl.text.trim();if(t.isEmpty)return;setState(()=>comments.add('@أنا: $t'));ctrl.clear();},icon:const Icon(Icons.send,color:cyan))]))
-  ]));
+class LiveRoomPage extends StatefulWidget{final String roomId,hostId,username,viewers;final String? streamUrl;const LiveRoomPage({super.key,required this.roomId,required this.hostId,required this.username,required this.viewers,this.streamUrl});@override State<LiveRoomPage> createState()=>_LiveRoomPageState();}
+class _LiveRoomPageState extends State<LiveRoomPage>{final ctrl=TextEditingController();List<Map<String,dynamic>> comments=[];VideoPlayerController? _video;RealtimeChannel? _channel;Timer? _refresh;int viewers=0;bool ending=false;@override void initState(){super.initState();viewers=int.tryParse(widget.viewers)??0;_enter();_initStream();}
+Future<void> _enter()async{try{final r=await sb.rpc('enter_live_room',params:{'p_room':widget.roomId});if(mounted)setState(()=>viewers=(r as num?)?.toInt()??viewers+1);}catch(_){if(mounted)setState(()=>viewers++);}await _loadComments();_channel=sb.channel('live-comments-${widget.roomId}').onPostgresChanges(event:PostgresChangeEvent.insert,schema:'public',table:'live_comments',filter:PostgresChangeFilter(type:PostgresChangeFilterType.eq,column:'room_id',value:widget.roomId),callback:(_)=>_loadComments(silent:true)).subscribe();_refresh=Timer.periodic(const Duration(seconds:5),(_)=>_loadRoomCount());}
+Future<void> _loadRoomCount()async{try{final r=await sb.from('live_rooms').select('viewer_count').eq('id',widget.roomId).maybeSingle();if(mounted&&r!=null)setState(()=>viewers=(r['viewer_count'] as num?)?.toInt()??viewers);}catch(_){}}
+Future<void> _loadComments({bool silent=false})async{try{final r=await sb.from('live_comments').select('id,user_id,body,created_at').eq('room_id',widget.roomId).order('created_at',ascending:false).limit(30);final rows=List<Map<String,dynamic>>.from(r);final ids=rows.map((e)=>e['user_id'].toString()).toSet().toList();if(ids.isNotEmpty){final p=await sb.from('profiles').select('id,username').inFilter('id',ids);final by=<String,Map<String,dynamic>>{for(final x in List<Map<String,dynamic>>.from(p))x['id'].toString():x};for(final x in rows)x['_username']=by[x['user_id'].toString()]?['username']??'مستخدم';}if(mounted)setState(()=>comments=rows.reversed.toList());}catch(_){}}
+Future<void> _initStream()async{final raw=widget.streamUrl;if(raw==null||raw.isEmpty)return;try{final c=VideoPlayerController.networkUrl(Uri.parse(raw));await c.initialize();await c.play();if(mounted)setState(()=>_video=c);else c.dispose();}catch(_){}}
+Future<void> _sendComment()async{final t=ctrl.text.trim();if(t.isEmpty)return;final u=sb.auth.currentUser;if(u==null)return;try{await sb.from('live_comments').insert({'room_id':widget.roomId,'user_id':u.id,'body':t});ctrl.clear();await _loadComments(silent:true);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إرسال التعليق: $e')));}}
+Future<void> _endLive()async{if(ending)return;setState(()=>ending=true);try{await sb.from('live_rooms').update({'status':'ended','ended_at':DateTime.now().toUtc().toIso8601String(),'viewer_count':0}).eq('id',widget.roomId).eq('host_id',sb.auth.currentUser?.id??'');if(mounted)Navigator.pop(context);}catch(e){if(mounted){setState(()=>ending=false);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إنهاء البث: $e')));}}}
+@override void dispose(){_refresh?.cancel();if(_channel!=null)sb.removeChannel(_channel!);_video?.dispose();ctrl.dispose();sb.rpc('leave_live_room',params:{'p_room':widget.roomId});super.dispose();}
+@override Widget build(BuildContext context){final mine=sb.auth.currentUser?.id==widget.hostId;return Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:Text('@${widget.username} • مباشر'),actions:[if(mine)IconButton(onPressed:ending?null:_endLive,icon:const Icon(Icons.stop_circle_outlined,color:pink))]),body:Stack(children:[const Positioned.fill(child:DecoratedBox(decoration:BoxDecoration(gradient:LinearGradient(begin:Alignment.topCenter,end:Alignment.bottomCenter,colors:[Color(0xFF122530),Colors.black])))),if(_video?.value.isInitialized==true)Positioned.fill(child:FittedBox(fit:BoxFit.cover,child:SizedBox(width:_video!.value.size.width,height:_video!.value.size.height,child:VideoPlayer(_video!))))else const Center(child:Icon(Icons.sensors_rounded,size:92,color:cyan)),Positioned(top:18,right:14,child:Container(padding:const EdgeInsets.symmetric(horizontal:10,vertical:6),decoration:BoxDecoration(color:pink,borderRadius:BorderRadius.circular(18)),child:Text('$viewers مشاهد'))),Positioned(left:14,right:14,bottom:82,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:comments.take(6).map((e)=>Padding(padding:const EdgeInsets.only(bottom:5),child:Text('@${e['_username']??'مستخدم'}: ${e['body']}',style:const TextStyle(fontWeight:FontWeight.w700,shadows:[Shadow(blurRadius:4,color:Colors.black)])))).toList())),Positioned(left:10,right:10,bottom:10,child:Row(children:[Expanded(child:TextField(controller:ctrl,onSubmitted:(_)=>_sendComment(),decoration:const InputDecoration(hintText:'اكتب تعليقًا...',filled:true,fillColor:Color(0xAA151922)))),const SizedBox(width:6),IconButton(onPressed:_sendComment,icon:const Icon(Icons.send,color:cyan))]))]));}
 }
 
 class AccountPage extends StatelessWidget {
@@ -2262,9 +2502,13 @@ class QrPage extends StatelessWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: CustomPaint(
-                painter: _QrPainter(data),
-                size: const Size(210, 210),
+              child: QrImageView(
+                data: data,
+                version: QrVersions.auto,
+                size: 210,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
+                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
               ),
             ),
             const SizedBox(height: 18),
@@ -2284,43 +2528,6 @@ class QrPage extends StatelessWidget {
       ),
     );
   }
-}
-
-class _QrPainter extends CustomPainter {
-  final String data;
-  _QrPainter(this.data);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = Colors.black;
-    final n = 29;
-    final cell = size.width / n;
-    final seed = data.codeUnits.fold<int>(17, (a, b) => (a * 31 + b) & 0x7fffffff);
-    bool bit(int x, int y) => ((x * 73856093 + y * 19349663 + seed) & 1) == 0;
-
-    void finder(int ox, int oy) {
-      canvas.drawRect(Rect.fromLTWH(ox * cell, oy * cell, 7 * cell, 7 * cell), p);
-      p.color = Colors.white;
-      canvas.drawRect(Rect.fromLTWH((ox + 1) * cell, (oy + 1) * cell, 5 * cell, 5 * cell), p);
-      p.color = Colors.black;
-      canvas.drawRect(Rect.fromLTWH((ox + 2) * cell, (oy + 2) * cell, 3 * cell, 3 * cell), p);
-    }
-
-    for (var y = 0; y < n; y++) {
-      for (var x = 0; x < n; x++) {
-        if ((x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7)) continue;
-        if (bit(x, y)) {
-          canvas.drawRect(Rect.fromLTWH(x * cell, y * cell, cell + .2, cell + .2), p);
-        }
-      }
-    }
-    finder(0, 0);
-    finder(n - 7, 0);
-    finder(0, n - 7);
-  }
-
-  @override
-  bool shouldRepaint(covariant _QrPainter old) => old.data != data;
 }
 
 class ActivityPage extends StatefulWidget {
@@ -2427,7 +2634,14 @@ class _VisitorsPageState extends State<VisitorsPage> {
           .eq('profile_id', u.id)
           .order('created_at', ascending: false)
           .limit(100);
-      if (mounted) setState(() => rows = List<Map<String, dynamic>>.from(r));
+      final next = List<Map<String, dynamic>>.from(r);
+      final ids = next.map((x) => x['viewer_id'].toString()).toSet().toList();
+      if (ids.isNotEmpty) {
+        final profiles = await sb.from('profiles').select('id,username,avatar_url,is_verified').inFilter('id', ids);
+        final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
+        for (final row in next) row['_profile'] = byId[row['viewer_id'].toString()];
+      }
+      if (mounted) setState(() => rows = next);
     } catch (_) {}
   }
 
@@ -2440,8 +2654,13 @@ class _VisitorsPageState extends State<VisitorsPage> {
           : ListView.builder(
               itemCount: rows.length,
               itemBuilder: (_, i) => ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.person)),
-                title: Text('@${rows[i]['viewer_id']}'),
+                leading: CircleAvatar(
+                  backgroundImage: ((rows[i]['_profile']?['avatar_url'] ?? '').toString().isNotEmpty)
+                      ? NetworkImage(rows[i]['_profile']['avatar_url'].toString())
+                      : null,
+                  child: ((rows[i]['_profile']?['avatar_url'] ?? '').toString().isEmpty) ? const Icon(Icons.person) : null,
+                ),
+                title: Text('@${rows[i]['_profile']?['username'] ?? 'مستخدم'}'),
                 subtitle: Text((rows[i]['created_at'] ?? '').toString()),
               ),
             ),
@@ -2474,7 +2693,14 @@ class _BlockedPageState extends State<BlockedPage> {
           .select('blocked_id,created_at')
           .eq('blocker_id', u.id)
           .order('created_at', ascending: false);
-      if (mounted) setState(() => rows = List<Map<String, dynamic>>.from(r));
+      final next = List<Map<String, dynamic>>.from(r);
+      final ids = next.map((x) => x['blocked_id'].toString()).toList();
+      if (ids.isNotEmpty) {
+        final profiles = await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
+        final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
+        for (final row in next) row['_profile'] = byId[row['blocked_id'].toString()];
+      }
+      if (mounted) setState(() => rows = next);
     } catch (_) {}
   }
 
@@ -2498,8 +2724,13 @@ class _BlockedPageState extends State<BlockedPage> {
           : ListView.builder(
               itemCount: rows.length,
               itemBuilder: (_, i) => ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.block)),
-                title: Text(rows[i]['blocked_id'].toString()),
+                leading: CircleAvatar(
+                  backgroundImage: ((rows[i]['_profile']?['avatar_url'] ?? '').toString().isNotEmpty)
+                      ? NetworkImage(rows[i]['_profile']['avatar_url'].toString())
+                      : null,
+                  child: ((rows[i]['_profile']?['avatar_url'] ?? '').toString().isEmpty) ? const Icon(Icons.block) : null,
+                ),
+                title: Text('@${rows[i]['_profile']?['username'] ?? rows[i]['blocked_id']}'),
                 trailing: TextButton(
                   onPressed: () => remove(rows[i]['blocked_id'].toString()),
                   child: const Text('إلغاء الحظر'),
@@ -2510,28 +2741,11 @@ class _BlockedPageState extends State<BlockedPage> {
   }
 }
 
-class OfflinePage extends StatelessWidget {
-  const OfflinePage({super.key});
-
-  @override
-  Widget build(BuildContext c) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('المحتوى المحفوظ')),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.download_done_rounded, size: 70, color: cyan),
-            const SizedBox(height: 14),
-            const Text('المشاهدة دون اتصال تحتاج صلاحية التخزين المحلي في الجهاز.'),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: () => Navigator.pop(c), child: const Text('رجوع')),
-          ],
-        ),
-      ),
-    );
-  }
+class OfflinePage extends StatefulWidget { const OfflinePage({super.key}); @override State<OfflinePage> createState()=>_OfflinePageState(); }
+class _OfflinePageState extends State<OfflinePage>{ List<Map<String,dynamic>> items=[]; bool loading=true; @override void initState(){super.initState();load();} Future<void> load()async{final x=await OfflineStore.list();if(mounted)setState(() { items=x; loading=false; });} Future<void> remove(String id)async{await OfflineStore.remove(id);await load();} @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('المشاهدة دون اتصال'),actions:[IconButton(onPressed:load,icon:const Icon(Icons.refresh))]),body:loading?const Center(child:CircularProgressIndicator()):items.isEmpty?const Center(child:Column(mainAxisSize:MainAxisSize.min,children:[Icon(Icons.download_done_rounded,size:70,color:cyan),SizedBox(height:14),Text('لا توجد فيديوهات محفوظة بعد'),SizedBox(height:6),Text('اضغط «تنزيل» من أي منشور لحفظه هنا.',style:TextStyle(color:Colors.white54))])):ListView.separated(padding:const EdgeInsets.all(12),itemCount:items.length,separatorBuilder:(_,__)=>const SizedBox(height:8),itemBuilder:(_,i){final e=items[i];final video=e['type']=='video';return Card(color:panel,child:ListTile(leading:SizedBox(width:62,height:62,child:video?const DecoratedBox(decoration:BoxDecoration(color:Color(0xFF18202A)),child:Icon(Icons.play_circle_fill,size:34,color:cyan)):Image.file(File(e['path'].toString()),fit:BoxFit.cover,errorBuilder:(_,__,___)=>const Icon(Icons.image))),title:Text('@${e['username']??'N'}',style:const TextStyle(fontWeight:FontWeight.w800)),subtitle:Text((e['caption']??'').toString().isEmpty?'محتوى محفوظ محليًا':e['caption'].toString(),maxLines:2,overflow:TextOverflow.ellipsis),trailing:IconButton(onPressed:()=>remove(e['id'].toString()),icon:const Icon(Icons.delete_outline,color:Colors.redAccent)),onTap:()=>Navigator.push(c,MaterialPageRoute(builder:(_)=>OfflineViewerPage(item:e))));})]); }
 }
+class OfflineViewerPage extends StatefulWidget{final Map<String,dynamic> item;const OfflineViewerPage({super.key,required this.item});@override State<OfflineViewerPage> createState()=>_OfflineViewerPageState();}
+class _OfflineViewerPageState extends State<OfflineViewerPage>{VideoPlayerController? controller;@override void initState(){super.initState();if(widget.item['type']=='video'){controller=VideoPlayerController.file(File(widget.item['path'].toString()))..initialize().then((_){if(mounted){setState((){});controller!.setLooping(true);controller!.play();}});}}@override void dispose(){controller?.dispose();super.dispose();}@override Widget build(BuildContext c)=>Scaffold(backgroundColor:Colors.black,appBar:AppBar(title:Text('@${widget.item['username']??'N'}')),body:Center(child:widget.item['type']=='video'?(controller?.value.isInitialized==true?AspectRatio(aspectRatio:controller!.value.aspectRatio,child:VideoPlayer(controller!)):const CircularProgressIndicator()):Image.file(File(widget.item['path'].toString()),fit:BoxFit.contain)));}
 
 class StudioPage extends StatelessWidget {
   const StudioPage({super.key});
@@ -2575,6 +2789,12 @@ class WalletPage extends StatefulWidget {
 class _WalletPageState extends State<WalletPage> {
   int balance = 0;
   int selected = 0;
+  final InAppPurchase _iap = InAppPurchase.instance;
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+  List<ProductDetails> products = [];
+  bool storeAvailable = false;
+  bool storeLoading = true;
+  static const _coinProductIds = <String>{'n_coins_100','n_coins_550','n_coins_1200','n_coins_2600','n_coins_7000'};
   final gifts = const [
     ['وردة', 10, Icons.local_florist],
     ['قلب', 50, Icons.favorite],
@@ -2588,10 +2808,11 @@ class _WalletPageState extends State<WalletPage> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    load();
-  }
+  void initState() { super.initState(); load(); _purchaseSub=_iap.purchaseStream.listen(_handlePurchases,onError:(_)=>{}); _loadStore(); }
+  Future<void> _loadStore() async { try { final available=await _iap.isAvailable(); if(!available){if(mounted)setState((){storeAvailable=false;storeLoading=false;});return;} final response=await _iap.queryProductDetails(_coinProductIds); if(mounted)setState((){storeAvailable=true;products=response.productDetails;storeLoading=false;}); } catch(_){if(mounted)setState((){storeAvailable=false;storeLoading=false;});} }
+  Future<void> _buy(ProductDetails product) async { try { await _iap.buyConsumable(purchaseParam:PurchaseParam(productDetails:product),autoConsume:true); } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر بدء الشراء: $e')));} }
+  Future<void> _handlePurchases(List<PurchaseDetails> purchases) async { for(final purchase in purchases){ if(purchase.status==PurchaseStatus.purchased||purchase.status==PurchaseStatus.restored){ try { final result=await sb.functions.invoke('verify-purchase',body:{'productId':purchase.productID,'purchaseToken':purchase.verificationData.serverVerificationData}); final data=result.data is Map?Map<String,dynamic>.from(result.data as Map):<String,dynamic>{}; if(data['ok']==true){await load();if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تمت إضافة ${data['coins']??''} عملة إلى رصيدك.')));} } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر التحقق من عملية الشراء: $e')));} } else if(purchase.status==PurchaseStatus.error&&mounted){ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('فشلت عملية الشراء: ${purchase.error?.message??'خطأ غير معروف'}')));} if(purchase.pendingCompletePurchase){try{await _iap.completePurchase(purchase);}catch(_){}} } }
+  @override void dispose(){_purchaseSub?.cancel();super.dispose();}
 
   Future<void> load() async {
     try {
@@ -2612,7 +2833,7 @@ class _WalletPageState extends State<WalletPage> {
         final x = TextEditingController();
         return AlertDialog(
           title: const Text('إرسال هدية'),
-          content: TextField(controller: x, decoration: const InputDecoration(labelText: 'معرّف المستلم (UUID)')),
+          content: TextField(controller: x, decoration: const InputDecoration(labelText: 'اسم المستخدم أو UUID')),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
             FilledButton(onPressed: () => Navigator.pop(ctx, x.text.trim()), child: const Text('إرسال')),
@@ -2622,7 +2843,8 @@ class _WalletPageState extends State<WalletPage> {
     );
     if (other == null || other.isEmpty) return;
     try {
-      await sb.rpc('send_gift', params: {'p_receiver': other, 'p_name': g[0], 'p_cost': g[1]});
+      var receiver=other; final byUsername=await sb.from('profiles').select('id').ilike('username',other).maybeSingle(); if(byUsername!=null)receiver=byUsername['id'].toString();
+      await sb.rpc('send_gift', params: {'p_receiver': receiver, 'p_name': g[0], 'p_cost': g[1]});
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم إرسال ${g[0]} بنجاح')));
@@ -2657,8 +2879,8 @@ class _WalletPageState extends State<WalletPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('شراء العملات يحتاج بوابة دفع مرتبطة بحسابك.'))),
-                  child: const Text('المتجر'),
+                  onPressed: () => showModalBottomSheet(context:c,builder:(_)=>SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(14,16,14,24),child:Column(mainAxisSize:MainAxisSize.min,children:[const Text('شراء العملات',style:TextStyle(fontSize:20,fontWeight:FontWeight.w900)),const SizedBox(height:8),if(storeLoading)const Padding(padding:EdgeInsets.all(20),child:CircularProgressIndicator()) else if(!storeAvailable||products.isEmpty)const Padding(padding:EdgeInsets.all(20),child:Text('متجر Google Play غير متاح أو لم تتم إضافة منتجات العملات بعد.')) else ...products.map((p)=>Card(color:panel,child:ListTile(leading:const Icon(Icons.monetization_on,color:cyan),title:Text(p.title),subtitle:Text(p.description),trailing:FilledButton(onPressed:()=>_buy(p),child:Text(p.price))))),TextButton(onPressed:()=>_iap.restorePurchases(),child:const Text('استعادة عمليات الشراء'))]))),
+                  child: const Text('شراء العملات'),
                 ),
               ),
             ],
@@ -2891,10 +3113,17 @@ class _AiPageState extends State<AiPage> {
   Future<void> send() async {
     final text = ctrl.text.trim(); if (text.isEmpty || busy) return;
     setState(() { messages.add({'role':'user','text':text}); ctrl.clear(); busy=true; });
-    // The UI is ready; the actual model call must be routed through a protected backend/Edge Function.
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    if (!mounted) return;
-    setState(() { busy=false; messages.add({'role':'ai','text':'N AI يحتاج ربط خدمة الذكاء الاصطناعي الآمنة من الخادم قبل أن أرسل طلبات حقيقية.'}); });
+    try {
+      final result = await sb.functions.invoke('ai-chat', body: {'message': text});
+      final data = result.data;
+      final reply = data is Map ? (data['reply'] ?? '').toString() : '';
+      if (reply.isEmpty) throw Exception('لم تصل استجابة من N AI.');
+      if (!mounted) return;
+      setState(() { busy=false; messages.add({'role':'ai','text':reply}); });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { busy=false; messages.add({'role':'ai','text':'تعذر الاتصال بـ N AI الآن: $e'}); });
+    }
   }
   @override Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('N AI')),
