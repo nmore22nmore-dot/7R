@@ -1324,9 +1324,9 @@ class LivePage extends StatelessWidget {
             ]),
           ),
           const SizedBox(height: 18),
-          Row(children: [
-            const Text('البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            const Spacer(),
+          const Row(children: [
+            Text('البث المباشر', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            Spacer(),
             Text('الكل', style: TextStyle(color: cyan, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 10),
@@ -1589,7 +1589,7 @@ class _MessagesPageState extends State<MessagesPage> {
       backgroundColor: bg,
       appBar: AppBar(title: const Text('الرسائل', style: TextStyle(fontWeight: FontWeight.w900)), actions: [IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded))]),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(14, 4, 14, 8), child: TextField(decoration: const InputDecoration(hintText: 'ابحث في الرسائل...', prefixIcon: Icon(Icons.search), isDense: true))),
+        const Padding(padding: EdgeInsets.fromLTRB(14, 4, 14, 8), child: TextField(decoration: InputDecoration(hintText: 'ابحث في الرسائل...', prefixIcon: Icon(Icons.search), isDense: true))),
         if (rows.isEmpty) const Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.chat_bubble_outline_rounded, size: 54, color: Colors.white38), SizedBox(height: 12), Text('لا توجد محادثات بعد', style: TextStyle(color: Colors.white70))])))
         else Expanded(child: ListView.separated(padding: const EdgeInsets.fromLTRB(10, 4, 10, 110), itemCount: rows.length, separatorBuilder: (_,__) => const Divider(height: 1, indent: 74), itemBuilder: (_, i) {
           final e = rows[i];
@@ -1987,7 +1987,7 @@ class _ProfilePageState extends State<ProfilePage> {
           Padding(padding: const EdgeInsets.symmetric(horizontal: 28), child: Row(children: [
             Expanded(child: OutlinedButton.icon(onPressed: _editProfile, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('تعديل الملف'))),
             const SizedBox(width: 8),
-            Expanded(child: OutlinedButton.icon(onPressed: () async { final u = sb.auth.currentUser; final text = 'تابعني على N: @$username'; try { await Share.share(text, subject: 'ملف @$username'); } catch (_) {} }, icon: const Icon(Icons.share_outlined, size: 18), label: const Text('مشاركة'))),
+            Expanded(child: OutlinedButton.icon(onPressed: () async { final text = 'تابعني على N: @$username'; try { await Share.share(text, subject: 'ملف @$username'); } catch (_) {} }, icon: const Icon(Icons.share_outlined, size: 18), label: const Text('مشاركة'))),
           ])),
           const SizedBox(height: 18),
           SizedBox(height: 48, child: Row(children: [
