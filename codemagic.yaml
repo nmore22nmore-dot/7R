@@ -159,24 +159,28 @@ workflows:
           python3 - <<'PYCODE'
           from pathlib import Path
           import re
-          candidates = [Path('android/app/build.gradle.kts'), Path('android/app/build.gradle')]
+
+          candidates = [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]
           app = next((p for p in candidates if p.exists()), None)
           if app is None:
-              raise SystemExit('ERROR: Android Gradle app file not found')
+              raise SystemExit("ERROR: Android Gradle app file not found")
+
           text = app.read_text()
-          if 'signingConfigs' not in text:
-              if app.suffix == '.kts':
+          is_kts = app.suffix == ".kts"
+
+          if "signingConfigs" not in text:
+              if is_kts:
                   signing = """
               signingConfigs {
                   create("release") {
-            val keystoreProperties = java.util.Properties()
-            val keyFile = rootProject.file("key.properties")
-            if (!keyFile.exists()) error("key.properties is missing")
-            keyFile.inputStream().use { keystoreProperties.load(it) }
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
-            storeFile = file(keystoreProperties.getProperty("storeFile"))
-            storePassword = keystoreProperties.getProperty("storePassword")
+                      val keystoreProperties = java.util.Properties()
+                      val keyFile = rootProject.file("key.properties")
+                      if (!keyFile.exists()) error("key.properties is missing")
+                      keyFile.inputStream().use { keystoreProperties.load(it) }
+                      keyAlias = keystoreProperties.getProperty("keyAlias")
+                      keyPassword = keystoreProperties.getProperty("keyPassword")
+                      storeFile = file(keystoreProperties.getProperty("storeFile"))
+                      storePassword = keystoreProperties.getProperty("storePassword")
                   }
               }
           """
@@ -184,26 +188,38 @@ workflows:
                   signing = """
               signingConfigs {
                   release {
-            def props = new Properties()
-            def keyFile = rootProject.file('key.properties')
-            if (!keyFile.exists()) throw new GradleException('key.properties is missing')
-            keyFile.withInputStream { props.load(it) }
-            keyAlias props['keyAlias']
-            keyPassword props['keyPassword']
-            storeFile file(props['storeFile'])
-            storePassword props['storePassword']
+                      def props = new Properties()
+                      def keyFile = rootProject.file('key.properties')
+                      if (!keyFile.exists()) throw new GradleException('key.properties is missing')
+                      keyFile.withInputStream { props.load(it) }
+                      keyAlias props['keyAlias']
+                      keyPassword props['keyPassword']
+                      storeFile file(props['storeFile'])
+                      storePassword props['storePassword']
                   }
               }
           """
-          text = re.sub(r'(android\s*\{)', lambda m: m.group(1) + signing, text, count=1)
-          if app.suffix == '.kts':
-              text = re.sub(r'(buildTypes\s*\{\s*release\s*\{)', lambda m: m.group(1) + '\n            signingConfig = signingConfigs.getByName("release")', text, count=1)
+              text = re.sub(r'(android\s*\{)', lambda m: m.group(1) + signing, text, count=1)
+
+          if is_kts:
+              if not re.search(r'(?m)^\s*signingConfig\s*=\s*signingConfigs\.', text):
+                  text, count = re.subn(
+                      r'(buildTypes\s*\{\s*release\s*\{)',
+                      r'\1\n            signingConfig = signingConfigs.getByName("release")',
+                      text, count=1)
+                  if count != 1:
+                      raise SystemExit("ERROR: release buildType not found in build.gradle.kts")
           else:
-              text = re.sub(r'(buildTypes\s*\{\s*release\s*\{)', lambda m: m.group(1) + '\n            signingConfig signingConfigs.release', text, count=1)
-          if 'signingConfig' not in text:
-              raise SystemExit('ERROR: release signing configuration was not injected')
+              if not re.search(r'(?m)^\s*signingConfig\s+signingConfigs\.', text):
+                  text, count = re.subn(
+                      r'(buildTypes\s*\{\s*release\s*\{)',
+                      r'\1\n            signingConfig signingConfigs.release',
+                      text, count=1)
+                  if count != 1:
+                      raise SystemExit("ERROR: release buildType not found in build.gradle")
+
           app.write_text(text)
-          print(f'Release signing configured in {app}')
+          print(f"Release signing configured in {app}")
           PYCODE
 
       - name: Flutter pub get
