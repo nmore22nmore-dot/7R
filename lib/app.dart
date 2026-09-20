@@ -1028,7 +1028,9 @@ class _StoryStripState extends State<StoryStrip> {
       if (ids.isNotEmpty) {
         final p = await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
         final byId = <String, Map<String, dynamic>>{for (final x in List<Map<String, dynamic>>.from(p)) x['id'].toString(): x};
-        for (final x in rows) x['_profile'] = byId[x['user_id'].toString()];
+        for (final x in rows) {
+          x['_profile'] = byId[x['user_id'].toString()];
+        }
       }
       if (mounted) setState(() { stories = rows; loading = false; });
     } catch (_) { if (mounted) setState(() => loading = false); }
@@ -1112,8 +1114,20 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
       }
     } catch (_) {}
   }
-  void next() { if (index < widget.stories.length - 1) { setState(() { index++; url = null; }); load(); } else Navigator.pop(context); }
-  void prev() { if (index > 0) { setState(() { index--; url = null; }); load(); } }
+  void next() {
+    if (index < widget.stories.length - 1) {
+      setState(() { index++; url = null; });
+      load();
+    } else {
+      Navigator.pop(context);
+    }
+  }
+  void prev() {
+    if (index > 0) {
+      setState(() { index--; url = null; });
+      load();
+    }
+  }
 
   @override void dispose() { video?.dispose(); super.dispose(); }
 
@@ -1456,7 +1470,9 @@ class _LivePageState extends State<LivePage> {
       final ids = list.map((e) => e['host_id'].toString()).toSet().toList();
       final profiles = ids.isEmpty ? <dynamic>[] : await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
       final byId = {for (final p in List<Map<String,dynamic>>.from(profiles)) p['id'].toString(): p};
-      for (final r in list) r['_profile'] = byId[r['host_id'].toString()];
+      for (final r in list) {
+        r['_profile'] = byId[r['host_id'].toString()];
+      }
       if (mounted) setState(() { rooms = list; loading = false; });
     } catch (e) {
       if (mounted) { setState(() => loading = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر تحميل البثوث: $e'))); }
@@ -2298,8 +2314,46 @@ class LiveRoomPage extends StatefulWidget{final String roomId,hostId,username,vi
 class _LiveRoomPageState extends State<LiveRoomPage>{final ctrl=TextEditingController();List<Map<String,dynamic>> comments=[];VideoPlayerController? _video;RealtimeChannel? _channel;Timer? _refresh;int viewers=0;bool ending=false;@override void initState(){super.initState();viewers=int.tryParse(widget.viewers)??0;_enter();_initStream();}
 Future<void> _enter()async{try{final r=await sb.rpc('enter_live_room',params:{'p_room':widget.roomId});if(mounted)setState(()=>viewers=(r as num?)?.toInt()??viewers+1);}catch(_){if(mounted)setState(()=>viewers++);}await _loadComments();_channel=sb.channel('live-comments-${widget.roomId}').onPostgresChanges(event:PostgresChangeEvent.insert,schema:'public',table:'live_comments',filter:PostgresChangeFilter(type:PostgresChangeFilterType.eq,column:'room_id',value:widget.roomId),callback:(_)=>_loadComments(silent:true)).subscribe();_refresh=Timer.periodic(const Duration(seconds:5),(_)=>_loadRoomCount());}
 Future<void> _loadRoomCount()async{try{final r=await sb.from('live_rooms').select('viewer_count').eq('id',widget.roomId).maybeSingle();if(mounted&&r!=null)setState(()=>viewers=(r['viewer_count'] as num?)?.toInt()??viewers);}catch(_){}}
-Future<void> _loadComments({bool silent=false})async{try{final r=await sb.from('live_comments').select('id,user_id,body,created_at').eq('room_id',widget.roomId).order('created_at',ascending:false).limit(30);final rows=List<Map<String,dynamic>>.from(r);final ids=rows.map((e)=>e['user_id'].toString()).toSet().toList();if(ids.isNotEmpty){final p=await sb.from('profiles').select('id,username').inFilter('id',ids);final by=<String,Map<String,dynamic>>{for(final x in List<Map<String,dynamic>>.from(p))x['id'].toString():x};for(final x in rows)x['_username']=by[x['user_id'].toString()]?['username']??'مستخدم';}if(mounted)setState(()=>comments=rows.reversed.toList());}catch(_){}}
-Future<void> _initStream()async{final raw=widget.streamUrl;if(raw==null||raw.isEmpty)return;try{final c=VideoPlayerController.networkUrl(Uri.parse(raw));await c.initialize();await c.play();if(mounted)setState(()=>_video=c);else c.dispose();}catch(_){}}
+Future<void> _loadComments({bool silent = false}) async {
+    try {
+      final r = await sb
+          .from('live_comments')
+          .select('id,user_id,body,created_at')
+          .eq('room_id', widget.roomId)
+          .order('created_at', ascending: false)
+          .limit(30);
+      final rows = List<Map<String, dynamic>>.from(r);
+      final ids = rows.map((e) => e['user_id'].toString()).toSet().toList();
+      if (ids.isNotEmpty) {
+        final p = await sb.from('profiles').select('id,username').inFilter('id', ids);
+        final by = <String, Map<String, dynamic>>{
+          for (final x in List<Map<String, dynamic>>.from(p)) x['id'].toString(): x,
+        };
+        for (final x in rows) {
+          x['_username'] = by[x['user_id'].toString()]?['username'] ?? 'مستخدم';
+        }
+      }
+      if (mounted) {
+        setState(() => comments = rows.reversed.toList());
+      }
+    } catch (_) {}
+  }
+Future<void> _initStream() async {
+    final raw = widget.streamUrl;
+    if (raw == null || raw.isEmpty) {
+      return;
+    }
+    try {
+      final c = VideoPlayerController.networkUrl(Uri.parse(raw));
+      await c.initialize();
+      await c.play();
+      if (mounted) {
+        setState(() => _video = c);
+      } else {
+        c.dispose();
+      }
+    } catch (_) {}
+  }
 Future<void> _sendComment()async{final t=ctrl.text.trim();if(t.isEmpty)return;final u=sb.auth.currentUser;if(u==null)return;try{await sb.from('live_comments').insert({'room_id':widget.roomId,'user_id':u.id,'body':t});ctrl.clear();await _loadComments(silent:true);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إرسال التعليق: $e')));}}
 Future<void> _endLive()async{if(ending)return;setState(()=>ending=true);try{await sb.from('live_rooms').update({'status':'ended','ended_at':DateTime.now().toUtc().toIso8601String(),'viewer_count':0}).eq('id',widget.roomId).eq('host_id',sb.auth.currentUser?.id??'');if(mounted)Navigator.pop(context);}catch(e){if(mounted){setState(()=>ending=false);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر إنهاء البث: $e')));}}}
 @override void dispose(){_refresh?.cancel();if(_channel!=null)sb.removeChannel(_channel!);_video?.dispose();ctrl.dispose();sb.rpc('leave_live_room',params:{'p_room':widget.roomId});super.dispose();}
@@ -2639,7 +2693,9 @@ class _VisitorsPageState extends State<VisitorsPage> {
       if (ids.isNotEmpty) {
         final profiles = await sb.from('profiles').select('id,username,avatar_url,is_verified').inFilter('id', ids);
         final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
-        for (final row in next) row['_profile'] = byId[row['viewer_id'].toString()];
+        for (final row in next) {
+          row['_profile'] = byId[row['viewer_id'].toString()];
+        }
       }
       if (mounted) setState(() => rows = next);
     } catch (_) {}
@@ -2698,7 +2754,9 @@ class _BlockedPageState extends State<BlockedPage> {
       if (ids.isNotEmpty) {
         final profiles = await sb.from('profiles').select('id,username,avatar_url').inFilter('id', ids);
         final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
-        for (final row in next) row['_profile'] = byId[row['blocked_id'].toString()];
+        for (final row in next) {
+          row['_profile'] = byId[row['blocked_id'].toString()];
+        }
       }
       if (mounted) setState(() => rows = next);
     } catch (_) {}
