@@ -3363,14 +3363,55 @@ class _NotificationsPageState extends State<NotificationsPage> {
     try {
       final u = sb.auth.currentUser;
       if (u == null) return;
+
       final r = await sb
           .from('notifications')
           .select('id,type,created_at,read,actor_id,post_id')
           .eq('user_id', u.id)
           .order('created_at', ascending: false)
           .limit(100);
-      if (mounted) setState(() => rows = List<Map<String, dynamic>>.from(r));
-    } catch (_) {
+
+      final loaded = List<Map<String, dynamic>>.from(r);
+
+      final actorIds = loaded
+          .map((e) => e['actor_id'])
+          .where((id) => id != null)
+          .map((id) => id.toString())
+          .toSet()
+          .toList();
+
+      if (actorIds.isNotEmpty) {
+        final profiles = await sb
+            .from('profiles')
+            .select('id,username')
+            .inFilter('id', actorIds);
+
+        final names = <String, String>{};
+
+        for (final profile in profiles) {
+          final id = profile['id']?.toString();
+          final username = profile['username']?.toString() ?? '';
+          if (id != null && username.isNotEmpty) {
+            names[id] = username;
+          }
+        }
+
+        for (final notification in loaded) {
+          final actorId = notification['actor_id']?.toString();
+          notification['actor_username'] =
+              actorId == null ? '' : (names[actorId] ?? '');
+        }
+      }
+
+      if (mounted) {
+        setState(() => rows = loaded);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر تحميل الإشعارات: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -3409,8 +3450,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       leading: Icon(_notificationIcon(e['type']), color: e['read'] == true ? Colors.white54 : cyan),
                       title: Text(
-                        _notificationText(e['type']),
-                        style: TextStyle(fontWeight: e['read'] == true ? FontWeight.w500 : FontWeight.w900),
+                        (() {
+                          final username =
+                              (e['actor_username'] ?? '').toString();
+                          final text = _notificationText(e['type']);
+                          return username.isEmpty
+                              ? text
+                              : '@$username $text';
+                        })(),
+                        style: TextStyle(
+                          fontWeight: e['read'] == true
+                              ? FontWeight.w500
+                              : FontWeight.w900,
+                        ),
                       ),
                       subtitle: Text((e['created_at'] ?? '').toString()),
                       onTap: () async {
