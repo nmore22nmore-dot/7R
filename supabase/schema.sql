@@ -421,6 +421,31 @@ create policy "N post media access" on storage.objects for select to authenticat
 
 
 
+-- N profile avatars: public read, authenticated owner upload/update/delete.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('avatar-media', 'avatar-media', true, 5242880)
+on conflict (id) do update set public = true, file_size_limit = 5242880;
+
+drop policy if exists "N avatar media upload" on storage.objects;
+create policy "N avatar media upload" on storage.objects
+for insert to authenticated
+with check (bucket_id='avatar-media' and (storage.foldername(name))[1]=auth.uid()::text);
+
+drop policy if exists "N avatar media update" on storage.objects;
+create policy "N avatar media update" on storage.objects
+for update to authenticated
+using (bucket_id='avatar-media' and owner_id=auth.uid())
+with check (bucket_id='avatar-media' and owner_id=auth.uid());
+
+drop policy if exists "N avatar media delete" on storage.objects;
+create policy "N avatar media delete" on storage.objects
+for delete to authenticated
+using (bucket_id='avatar-media' and owner_id=auth.uid());
+
+drop policy if exists "N avatar media public read" on storage.objects;
+create policy "N avatar media public read" on storage.objects
+for select using (bucket_id='avatar-media');
+
 -- N stories media: private 24-hour story storage.
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('story-media', 'story-media', false, 104857600)

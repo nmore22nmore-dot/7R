@@ -1166,14 +1166,25 @@ class _FeedPageState extends State<FeedPage> {
         ? RefreshIndicator(onRefresh: load, child: ListView(physics: const AlwaysScrollableScrollPhysics(), children: const [SizedBox(height: 300), Center(child: Text('لا توجد فيديوهات بعد', style: TextStyle(color: Colors.white70))) ]))
         : RefreshIndicator(onRefresh: load, child: PageView.builder(scrollDirection: Axis.vertical, itemCount: posts.length,
             onPageChanged: (i) => setState(() => activeIndex = i), itemBuilder: (_, i) => VideoCard(post: posts[i], active: i == activeIndex))),
-      SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(10, 5, 10, 0), child: Row(children: [
-        _roundTopButton(Icons.search, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage()))),
+      SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(12, 7, 12, 0), child: Row(children: [
+        // TikTok-style header: N branding on the right, search on the left.
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: cyan.withValues(alpha: .75), width: 1.2),
+            boxShadow: const [BoxShadow(color: Color(0x3325F4EE), blurRadius: 10)],
+          ),
+          padding: const EdgeInsets.all(6),
+          child: Image.asset('assets/branding/n_icon.png', fit: BoxFit.contain),
+        ),
         const Spacer(),
         GestureDetector(onTap: () => setState(() { followingTab = false; load(); }), child: _FeedTab(active: !followingTab, title: 'لك')),
         const SizedBox(width: 22),
         GestureDetector(onTap: () => setState(() { followingTab = true; load(); }), child: _FeedTab(active: followingTab, title: 'أتابع')),
         const Spacer(),
-        _roundTopButton(Icons.chat_bubble_outline_rounded, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MessagesPage()))),
+        _roundTopButton(Icons.search, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchPage()))),
       ]))),
       const Positioned(left: 0, right: 0, top: 82, height: 86, child: StoryStrip()),
     ])));
@@ -2189,27 +2200,69 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _editProfile() async {
     final username = TextEditingController(text: p?['username'] ?? '');
     final bio = TextEditingController(text: p?['bio'] ?? '');
+    XFile? selectedAvatar;
+
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تعديل الملف الشخصي'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: username, decoration: const InputDecoration(labelText: 'اسم المستخدم')),
-          const SizedBox(height: 12),
-          TextField(controller: bio, maxLines: 3, decoration: const InputDecoration(labelText: 'النبذة')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حفظ')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('تعديل الملف الشخصي'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            GestureDetector(
+              onTap: () async {
+                final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 88, maxWidth: 900);
+                if (picked != null) setDialogState(() => selectedAvatar = picked);
+              },
+              child: Stack(alignment: Alignment.bottomRight, children: [
+                CircleAvatar(
+                  radius: 42,
+                  backgroundColor: const Color(0xFF17323A),
+                  backgroundImage: selectedAvatar != null
+                      ? FileImage(File(selectedAvatar!.path))
+                      : ((p?['avatar_url'] ?? '').toString().isNotEmpty ? NetworkImage(p!['avatar_url'].toString()) : null) as ImageProvider?,
+                  child: selectedAvatar == null && (p?['avatar_url'] ?? '').toString().isEmpty
+                      ? const Icon(Icons.person, size: 42, color: Colors.white70)
+                      : null,
+                ),
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: const BoxDecoration(color: pink, shape: BoxShape.circle),
+                  child: const Icon(Icons.camera_alt_rounded, size: 17),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            const Text('اضغط على الصورة لتغييرها', style: TextStyle(color: Colors.white54, fontSize: 11)),
+            const SizedBox(height: 12),
+            TextField(controller: username, decoration: const InputDecoration(labelText: 'اسم المستخدم', prefixIcon: Icon(Icons.alternate_email))),
+            const SizedBox(height: 12),
+            TextField(controller: bio, maxLines: 3, decoration: const InputDecoration(labelText: 'النبذة', prefixIcon: Icon(Icons.info_outline))),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حفظ')),
+          ],
+        ),
       ),
     );
     if (ok != true) return;
     try {
-      await sb.from('profiles').update({'username': username.text.trim(), 'bio': bio.text.trim()}).eq('id', sb.auth.currentUser!.id);
+      final user = sb.auth.currentUser!;
+      final updates = <String, dynamic>{'username': username.text.trim(), 'bio': bio.text.trim()};
+      if (selectedAvatar != null) {
+        final ext = selectedAvatar!.name.contains('.') ? selectedAvatar!.name.split('.').last.toLowerCase() : 'jpg';
+        final path = '${user.id}/avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await sb.storage.from('avatar-media').upload(
+          path,
+          File(selectedAvatar!.path),
+          fileOptions: FileOptions(contentType: _mimeForExtension(ext), upsert: false),
+        );
+        updates['avatar_url'] = sb.storage.from('avatar-media').getPublicUrl(path);
+      }
+      await sb.from('profiles').update(updates).eq('id', user.id);
       await load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الملف الشخصي')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث الملف الشخصي')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذر حفظ الملف: $e')));

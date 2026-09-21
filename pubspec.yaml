@@ -1,7 +1,7 @@
 name: n_app
 description: N - Arabic social video platform
 publish_to: "none"
-version: 5.4.0+58
+version: 5.4.2+60
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
