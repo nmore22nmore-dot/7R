@@ -975,9 +975,67 @@ class _UserProfilePageState extends State<UserProfilePage> {
       if(mounted){ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم حظر الحساب.')));Navigator.pop(context);}
     } catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر حظر الحساب: $e')));}
   }
+
+  Future<void> openConversation() async {
+    final me = sb.auth.currentUser;
+
+    if (me == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('يجب تسجيل الدخول أولًا.')),
+        );
+      }
+      return;
+    }
+
+    if (me.id == widget.userId) return;
+
+    if (mounted) setState(() => busy = true);
+
+    try {
+      final result = await sb.rpc(
+        'create_conversation',
+        params: {
+          'p_other_user': widget.userId,
+        },
+      );
+
+      final conversationId = result?.toString() ?? '';
+
+      if (conversationId.isEmpty || conversationId == 'null') {
+        throw Exception('تعذر إنشاء المحادثة');
+      }
+
+      if (!mounted) return;
+      ChatPage.open(context, conversationId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذر فتح المحادثة: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
   @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:Text('@${widget.username}'),actions:[IconButton(onPressed:blockUser,icon:const Icon(Icons.block_outlined))]),body:Column(children:[
     const SizedBox(height:18), CircleAvatar(radius:44,child:Text(widget.username.isEmpty?'N':widget.username[0].toUpperCase(),style:const TextStyle(fontSize:28,fontWeight:FontWeight.bold))), const SizedBox(height:10),
-    FilledButton(onPressed:busy?null:toggleFollow,child:Text(following?'إلغاء المتابعة':'متابعة')), const SizedBox(height:12),
+    Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        FilledButton(
+          onPressed: busy ? null : toggleFollow,
+          child: Text(following ? 'إلغاء المتابعة' : 'متابعة'),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: busy ? null : openConversation,
+          icon: const Icon(Icons.chat_bubble_outline),
+          label: const Text('رسالة'),
+        ),
+      ],
+    ),
+    const SizedBox(height:12),
     Expanded(child:GridView.builder(padding:const EdgeInsets.all(8),gridDelegate:const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount:3,crossAxisSpacing:4,mainAxisSpacing:4),itemCount:posts.length,itemBuilder:(_,i)=>FutureBuilder<String?>(
       future: _signedPostUrl(posts[i]['media_url'].toString()),
       builder: (_, snap) => snap.hasData ? Image.network(snap.data!, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Icon(Icons.broken_image)) : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
