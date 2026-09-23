@@ -28,12 +28,15 @@ create table if not exists public.posts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   media_url text not null,
-  media_type text not null default 'video',
-  caption text default '',
+  video boolean not null default true,
+  text text default '',
   visibility text not null default 'public' check(visibility in ('public','followers','private')),
-  adult_only boolean default false,
+  adult boolean not null default false,
+  is_pinned boolean not null default false,
+  share_count integer not null default 0,
   likes_count integer not null default 0,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  updated_at timestamptz not null default now()
 );
 
 
@@ -266,7 +269,7 @@ returns boolean language sql stable security definer set search_path=public as $
     where p.id=p_post_id
       and auth.uid() is not null
       and not public.is_blocked_between(auth.uid(), p.user_id)
-      and (not p.adult_only or (select birth_date from public.profiles where id=auth.uid()) <= (current_date - interval '21 years')::date)
+      and (not p.adult or (select birth_date from public.profiles where id=auth.uid()) <= (current_date - interval '21 years')::date)
       and (
         auth.uid()=p.user_id
         or (p.visibility='public' and (not owner.is_private or exists(select 1 from public.follows f where f.follower_id=auth.uid() and f.following_id=p.user_id)))
@@ -281,11 +284,11 @@ drop policy if exists "posts public read" on posts;
 drop policy if exists "posts visible read" on posts;
 create policy "posts visible read" on posts for select to authenticated using (public.can_read_post(id));
 drop policy if exists "posts own insert" on posts;
-create policy "posts own insert" on posts for insert with check(auth.uid()=user_id and (not adult_only or (select birth_date from public.profiles where id=auth.uid()) <= (current_date - interval '21 years')::date));
+create policy "posts own insert" on posts for insert with check(auth.uid()=user_id and (not adult or (select birth_date from public.profiles where id=auth.uid()) <= (current_date - interval '21 years')::date));
 drop policy if exists "posts own update" on posts;
 create policy "posts own update" on posts for update to authenticated
 using (auth.uid()=user_id)
-with check (auth.uid()=user_id and (not adult_only or (select birth_date from public.profiles where id=auth.uid()) <= (current_date - interval '21 years')::date));
+with check (auth.uid()=user_id and (not adult or (select birth_date from public.profiles where id=auth.uid()) <= (current_date - interval '21 years')::date));
 drop policy if exists "posts own delete" on posts;
 create policy "posts own delete" on posts for delete using(auth.uid()=user_id);
 
@@ -786,3 +789,34 @@ create unique index if not exists live_rooms_one_active_host_idx on public.live_
 drop policy if exists "live rooms read" on public.live_rooms;
 create policy "live rooms read" on public.live_rooms for select to authenticated
 using ((status='live' and not public.is_blocked_between(auth.uid(),host_id)) or host_id=auth.uid());
+
+-- Post share counter
+create or replace function public.register_post_share(p_post_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_count integer;
+begin
+  if auth.uid() is null then
+    raise exception 'UNAUTHENTICATED';
+  end if;
+
+  update public.posts
+  set share_count = share_count + 1,
+      updated_at = now()
+  where id = p_post_id
+  returning share_count into v_count;
+
+  if v_count is null then
+    raise exception 'POST_NOT_FOUND';
+  end if;
+
+  return v_count;
+end;
+$function$;
+
+grant execute on function public.register_post_share(uuid)
+to anon, authenticated, service_role;
