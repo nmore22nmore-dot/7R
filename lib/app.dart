@@ -1356,6 +1356,82 @@ class _VideoCardState extends State<VideoCard> {
     } catch (_) {}
   }
 
+  Future<void> reportPost(BuildContext context) async {
+    final me = sb.auth.currentUser;
+    final postId = widget.post['id']?.toString();
+    final ownerId = widget.post['user_id']?.toString();
+
+    if (me == null || postId == null || ownerId == null) return;
+
+    if (me.id == ownerId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكنك التبليغ عن منشورك.')),
+      );
+      return;
+    }
+
+    const reasons = <String>[
+      'محتوى مزعج أو غير مرغوب',
+      'محتوى غير لائق',
+      'تحرش أو إساءة',
+      'عنف أو تهديد',
+      'محتوى غير قانوني',
+      'سبب آخر',
+    ];
+
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF171717),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                'الإبلاغ عن المنشور',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+            ),
+            ...reasons.map(
+              (r) => ListTile(
+                title: Text(r, textAlign: TextAlign.right),
+                onTap: () => Navigator.pop(ctx, r),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (reason == null) return;
+
+    try {
+      await sb.rpc(
+        'submit_report',
+        params: {
+          'p_reported_user': ownerId,
+          'p_post_id': postId,
+          'p_reason': reason,
+          'p_details': '',
+        },
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم إرسال البلاغ بنجاح.')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر إرسال البلاغ حالياً.')),
+        );
+      }
+    }
+  }
+
   Widget _action(IconData icon, String text, VoidCallback onTap, {bool active=false}) => Padding(padding: const EdgeInsets.only(bottom: 15), child: Column(children: [
     InkWell(onTap:onTap, child: Icon(icon, color: active ? const Color(0xFFFF2D55) : Colors.white, size: 32)),
     const SizedBox(height: 2), Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, shadows:[Shadow(blurRadius:3,color:Colors.black)])),
@@ -1376,6 +1452,7 @@ class _VideoCardState extends State<VideoCard> {
       _action(saved?Icons.bookmark:Icons.bookmark_border, 'حفظ', save, active:saved),
       _action(Icons.download_outlined, 'تنزيل', () => _downloadPost(context, widget.post)),
       _action(Icons.share_outlined, 'مشاركة', () => showShare(context, postId: widget.post['id']?.toString())),
+                        _action(Icons.flag_outlined, 'تبليغ', () => reportPost(context)),
     ])),
     Positioned(left:14,right:82,bottom:24,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       Text('@$username',style:const TextStyle(fontWeight:FontWeight.w900,fontSize:17)),
@@ -1391,6 +1468,15 @@ Future<void> showShare(BuildContext context, {String? postId}) async {
   final link = id.isEmpty ? 'N — منصة الفيديو الاجتماعي' : 'https://n.app/p/$id';
   try {
     await Share.share(link, subject: 'مشاركة من N');
+
+    if (id.isNotEmpty) {
+      try {
+        await sb.rpc(
+          'register_post_share',
+          params: {'p_post_id': id},
+        );
+      } catch (_) {}
+    }
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
