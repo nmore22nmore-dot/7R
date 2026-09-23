@@ -35,3 +35,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/
+
+dependency_overrides:
+  path_provider_foundation: 2.4.0

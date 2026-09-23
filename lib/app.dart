@@ -119,8 +119,8 @@ class OfflineStore {
   static Future<void> remove(String id) async { final items=await list(); for(final e in items.where((e)=>e['id'].toString()==id)){try{await File(e['path'].toString()).delete();}catch(_){}} items.removeWhere((e)=>e['id'].toString()==id); await _write(items); }
 }
 Future<void> _downloadPost(BuildContext context, Map<String,dynamic> post) async {
-  final id=post['id']?.toString(), url=post['media_url']?.toString()??'', type=post['media_type']?.toString()??'video'; if(id==null||id.isEmpty||url.isEmpty)return;
-  try { await OfflineStore.download(id:id,url:url,type:type,caption:post['caption']?.toString()??'',username:post['profile']?['username']?.toString()??'N'); if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تنزيل المحتوى للمشاهدة دون اتصال.'))); } catch(e){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تنزيل المحتوى: $e')));}
+  final id=post['id']?.toString(), url=post['media_url']?.toString()??'', type=(post['video'] == true ? 'video' : 'image'); if(id==null||id.isEmpty||url.isEmpty)return;
+  try { await OfflineStore.download(id:id,url:url,type:type,caption:post['text']?.toString()??'',username:post['profile']?['username']?.toString()??'N'); if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('تم تنزيل المحتوى للمشاهدة دون اتصال.'))); } catch(e){if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('تعذر تنزيل المحتوى: $e')));}
 }
 
 Future<String?> _signedPostUrl(String value) async {
@@ -134,7 +134,7 @@ Future<String?> _signedPostUrl(String value) async {
 
 Future<List<Map<String, dynamic>>> loadPostsWithProfiles({required bool following}) async {
   final user = sb.auth.currentUser;
-  var query = sb.from('posts').select('*');
+  var query = sb.from('posts').select('id,user_id,text,adult,visibility,video,media_url,created_at,is_pinned,share_count,likes_count');
   if (following) {
     if (user == null) return [];
     final follows = await sb.from('follows').select('following_id').eq('follower_id', user.id);
@@ -148,7 +148,7 @@ Future<List<Map<String, dynamic>>> loadPostsWithProfiles({required bool followin
   final rows = List<Map<String, dynamic>>.from(raw);
   if (rows.isEmpty) return rows;
   final ids = rows.map((r) => r['user_id'].toString()).toSet().toList();
-  final profiles = await sb.from('profiles').select('id,username,avatar_url,bio,is_verified').inFilter('id', ids);
+  final profiles = await sb.from('profiles').select('id,username,avatar_url,bio,verified').inFilter('id', ids);
   final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
   return Future.wait(rows.map((row) async {
     final copy = Map<String, dynamic>.from(row);
@@ -936,11 +936,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override void initState(){super.initState(); load();}
   Future<void> load() async {
     try {
-      final data=await sb.from('posts').select().eq('user_id',widget.userId).order('created_at',ascending:false);
+      final data=await sb.from('posts').select('id,user_id,text,adult,visibility,video,media_url,created_at,is_pinned,share_count,likes_count').eq('user_id',widget.userId).order('created_at',ascending:false);
       final me=sb.auth.currentUser;
       if (me != null && me.id != widget.userId) {
         try {
-          await sb.from('profile_views').upsert({'profile_id': widget.userId, 'viewer_id': me.id}, onConflict: 'profile_id,viewer_id');
+          await sb.rpc('register_profile_visit', params: {'target_profile_id': widget.userId});
         } catch (_) {}
       }
       final f=me==null?null:await sb.from('follows').select('following_id').eq('follower_id',me.id).eq('following_id',widget.userId).maybeSingle();
@@ -1308,7 +1308,7 @@ class _VideoCardState extends State<VideoCard> {
 
   @override void initState() { super.initState();
     final raw = widget.post['likes_count']; likes = raw is int ? raw : int.tryParse('$raw') ?? 0;
-    if (url.isNotEmpty && (widget.post['media_type'] ?? 'video') == 'video') {
+    if (url.isNotEmpty && ((widget.post['video'] == true ? 'video' : 'image')) == 'video') {
       c = VideoPlayerController.networkUrl(Uri.parse(url))..initialize().then((_) { if (mounted) { setState(() {}); c!.setLooping(true); if (widget.active) c!.play(); }});
     }
     _loadReactionState();
@@ -1362,7 +1362,7 @@ class _VideoCardState extends State<VideoCard> {
   ]));
 
   @override Widget build(BuildContext context) => GestureDetector(onDoubleTap: like, child: Stack(fit: StackFit.expand, children: [
-    if ((widget.post['media_type'] ?? 'video') == 'image' && url.isNotEmpty) Image.network(url, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Center(child:Icon(Icons.broken_image_outlined,size:60)))
+    if (((widget.post['video'] == true ? 'video' : 'image')) == 'image' && url.isNotEmpty) Image.network(url, fit: BoxFit.cover, errorBuilder: (_,__,___)=>const Center(child:Icon(Icons.broken_image_outlined,size:60)))
     else if (c?.value.isInitialized == true) FittedBox(fit:BoxFit.cover, child:SizedBox(width:c!.value.size.width,height:c!.value.size.height,child:VideoPlayer(c!)))
     else const Center(child:CircularProgressIndicator(strokeWidth:2)),
     const Positioned.fill(child: IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter,end: Alignment.bottomCenter,colors:[Colors.transparent,Colors.transparent,Color(0xCC000000)],stops:[0,.55,1]))))),
@@ -1379,7 +1379,7 @@ class _VideoCardState extends State<VideoCard> {
     ])),
     Positioned(left:14,right:82,bottom:24,child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
       Text('@$username',style:const TextStyle(fontWeight:FontWeight.w900,fontSize:17)),
-      if((widget.post['caption']??'').toString().trim().isNotEmpty) ...[const SizedBox(height:7),Text((widget.post['caption']??'').toString(),maxLines:3,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14))],
+      if((widget.post['text']??'').toString().trim().isNotEmpty) ...[const SizedBox(height:7),Text((widget.post['text']??'').toString(),maxLines:3,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:14))],
       const SizedBox(height:7),
       Row(children:[const Icon(Icons.music_note,size:15),const SizedBox(width:4),Flexible(child:Text('الصوت الأصلي لـ @$username',maxLines:1,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:12,fontWeight:FontWeight.w600)))])
     ])),
@@ -1663,10 +1663,10 @@ class _PublishPageState extends State<PublishPage> {
       await sb.from('posts').insert({
         'user_id': uid,
         'media_url': mediaPath,
-        'media_type': imageMode ? 'image' : 'video',
-        'caption': caption.text.trim(),
+        'video': !imageMode,
+        'text': caption.text.trim(),
         'visibility': visibility,
-        'adult_only': adultOnly,
+        'adult': adultOnly,
       });
 
       if (mounted) {
@@ -2232,8 +2232,8 @@ class _ProfilePageState extends State<ProfilePage> {
     if (user == null) return;
     try {
       final results = await Future.wait([
-        sb.from('profiles').select().eq('id', user.id).maybeSingle(),
-        sb.from('posts').select().eq('user_id', user.id).order('created_at', ascending: false),
+        sb.from('profiles').select('username,bio,avatar_url').eq('id', user.id).maybeSingle(),
+        sb.from('posts').select('id,user_id,text,adult,visibility,video,media_url,created_at,is_pinned,share_count,likes_count').eq('user_id', user.id).order('created_at', ascending: false),
         sb.from('follows').select('follower_id').eq('following_id', user.id),
         sb.from('follows').select('following_id').eq('follower_id', user.id),
         sb.from('post_likes').select('post_id').eq('user_id', user.id),
@@ -2241,7 +2241,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final likedIds = List<Map<String,dynamic>>.from(results[4] as List).map((r)=>r['post_id']).toList();
       List<Map<String,dynamic>> liked = [];
       if (likedIds.isNotEmpty) {
-        final lp = await sb.from('posts').select().inFilter('id', likedIds).order('created_at', ascending:false);
+        final lp = await sb.from('posts').select('id,user_id,text,adult,visibility,video,media_url,created_at,is_pinned,share_count,likes_count').inFilter('id', likedIds).order('created_at', ascending:false);
         liked = List<Map<String,dynamic>>.from(lp);
       }
       if (!mounted) return;
@@ -2794,18 +2794,18 @@ class _VisitorsPageState extends State<VisitorsPage> {
       final u = sb.auth.currentUser;
       if (u == null) return;
       final r = await sb
-          .from('profile_views')
-          .select('viewer_id,created_at')
+          .from('profile_visits')
+          .select('visitor_id,visited_at')
           .eq('profile_id', u.id)
-          .order('created_at', ascending: false)
+          .order('visited_at', ascending: false)
           .limit(100);
       final next = List<Map<String, dynamic>>.from(r);
-      final ids = next.map((x) => x['viewer_id'].toString()).toSet().toList();
+      final ids = next.map((x) => x['visitor_id'].toString()).toSet().toList();
       if (ids.isNotEmpty) {
-        final profiles = await sb.from('profiles').select('id,username,avatar_url,is_verified').inFilter('id', ids);
+        final profiles = await sb.from('profiles').select('id,username,avatar_url,verified').inFilter('id', ids);
         final byId = <String, Map<String, dynamic>>{for (final p in List<Map<String, dynamic>>.from(profiles)) p['id'].toString(): p};
         for (final row in next) {
-          row['_profile'] = byId[row['viewer_id'].toString()];
+          row['_profile'] = byId[row['visitor_id'].toString()];
         }
       }
       if (mounted) setState(() => rows = next);
@@ -3169,8 +3169,8 @@ class _WalletPageState extends State<WalletPage> {
     try {
       final u = sb.auth.currentUser;
       if (u == null) return;
-      final r = await sb.from('user_coins').select('balance').eq('user_id', u.id).maybeSingle();
-      if (mounted) setState(() => balance = (r?['balance'] ?? 0) as int);
+      final r = await sb.from('user_coins').select('coins').eq('user_id', u.id).maybeSingle();
+      if (mounted) setState(() => balance = (r?['coins'] ?? 0) as int);
     } catch (_) {}
   }
 

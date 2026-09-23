@@ -93,10 +93,18 @@ Deno.serve(async (req) => {
           },
         }),
       });
-      if (res.ok) sent++;
-      else {
+      if (res.ok) {
+        sent++;
+      } else {
         const detail = await res.text();
-        if (/UNREGISTERED|registration-token-not-registered|INVALID_ARGUMENT/i.test(detail)) invalid.push(row.id);
+        console.error('FCM_SEND_FAILED', {
+          status: res.status,
+          statusText: res.statusText,
+          detail,
+        });
+        if (/UNREGISTERED|registration-token-not-registered|INVALID_ARGUMENT/i.test(detail)) {
+          invalid.push(row.id);
+        }
       }
     }
     if (invalid.length) await supabase.from('push_tokens').delete().in('id', invalid);
