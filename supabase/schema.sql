@@ -88,24 +88,33 @@ create table if not exists public.comments (
 
 create table if not exists public.conversations (
   id uuid primary key default gen_random_uuid(),
-  user_a uuid references auth.users(id) on delete cascade,
-  user_b uuid references auth.users(id) on delete cascade,
+  user_a uuid references public.profiles(id) on delete cascade,
+  user_b uuid references public.profiles(id) on delete cascade,
   title text default 'محادثة',
   last_message text default '',
   updated_at timestamptz default now(),
   unique(user_a,user_b)
 );
 
+create table if not exists public.conversation_members (
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key(conversation_id,user_id)
+);
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
-  conversation_id uuid references public.conversations(id) on delete cascade,
-  sender_id uuid references auth.users(id) on delete cascade,
-  body text default '',
-  media_url text,
-  media_type text check(media_type in ('image','video','file') or media_type is null),
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  text text not null,
+  created_at timestamptz not null default now(),
+  media_type text,
   media_name text,
   media_size bigint,
-  created_at timestamptz default now()
+  body text,
+  media_url text,
+  read_at timestamptz
 );
 
 -- Upgrade the message attachment schema for existing databases.
@@ -213,7 +222,14 @@ alter table public.saved_posts enable row level security;
 alter table public.follows enable row level security;
 alter table public.comments enable row level security;
 alter table public.conversations enable row level security;
+alter table public.conversation_members enable row level security;
 alter table public.messages enable row level security;
+
+drop policy if exists "conversation_members_select_own" on public.conversation_members;
+create policy "conversation_members_select_own"
+on public.conversation_members
+for select to authenticated
+using (user_id = auth.uid());
 alter table public.notifications enable row level security;
 alter table public.stories enable row level security;
 alter table public.user_coins enable row level security;
@@ -315,37 +331,101 @@ create policy "comments delete" on comments for delete using(auth.uid()=user_id)
 drop policy if exists "conversations member" on conversations;
 drop policy if exists "conversations member read" on conversations;
 create policy "conversations member read" on conversations for select to authenticated using(auth.uid()=user_a or auth.uid()=user_b);
-create or replace function public.create_conversation(p_other_user uuid) returns uuid language plpgsql security definer set search_path=public as $$
-declare me uuid:=auth.uid(); a uuid; b uuid; cid uuid;
+create or replace function public.create_conversation(p_other_user uuid)
+returns uuid language plpgsql security definer set search_path=public as $$
+declare
+  v_me uuid;
+  v_conversation uuid;
 begin
- if me is null then raise exception 'NOT_AUTHENTICATED'; end if;
- if p_other_user is null or p_other_user=me then raise exception 'INVALID_PARTICIPANT'; end if;
- if public.is_blocked_between(me,p_other_user) then raise exception 'USER_BLOCKED'; end if;
- if not exists(select 1 from auth.users where id=p_other_user) then raise exception 'USER_NOT_FOUND'; end if;
- a:=least(me,p_other_user); b:=greatest(me,p_other_user);
- insert into public.conversations(user_a,user_b) values(a,b) on conflict(user_a,user_b) do update set updated_at=public.conversations.updated_at returning id into cid;
- return cid;
+  v_me := auth.uid();
+
+  if v_me is null then raise exception 'UNAUTHENTICATED'; end if;
+  if p_other_user is null then raise exception 'INVALID_OTHER_USER'; end if;
+  if p_other_user = v_me then raise exception 'CANNOT_MESSAGE_SELF'; end if;
+
+  if not exists (select 1 from auth.users where id=p_other_user) then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+
+  if public.is_blocked_between(v_me,p_other_user) then
+    raise exception 'USER_BLOCKED';
+  end if;
+
+  select c.id into v_conversation
+  from public.conversations c
+  where (c.user_a=v_me and c.user_b=p_other_user)
+     or (c.user_a=p_other_user and c.user_b=v_me)
+  limit 1;
+
+  if v_conversation is not null then
+    return v_conversation;
+  end if;
+
+  insert into public.conversations(user_a,user_b)
+  values(v_me,p_other_user)
+  returning id into v_conversation;
+
+  insert into public.conversation_members(conversation_id,user_id)
+  values(v_conversation,v_me),(v_conversation,p_other_user);
+
+  return v_conversation;
 end $$;
+
 revoke all on function public.create_conversation(uuid) from public;
 grant execute on function public.create_conversation(uuid) to authenticated;
 
-create or replace function public.touch_conversation_from_message()
+create or replace function public.update_conversation_updated_at()
 returns trigger language plpgsql security definer set search_path=public as $$
 begin
   update public.conversations
-  set last_message = case when coalesce(new.body,'')='' then '📎 ملف مرفق' else new.body end,
-      updated_at = coalesce(new.created_at, now())
-  where id = new.conversation_id;
+  set
+    updated_at = new.created_at,
+    last_message = coalesce(
+      nullif(new.body,''),
+      nullif(new.text,''),
+      case when new.media_name is not null
+           then '📎 ' || new.media_name
+           else null end
+    )
+  where id=new.conversation_id;
   return new;
 end $$;
-drop trigger if exists message_conversation_touch on public.messages;
-create trigger message_conversation_touch after insert on public.messages
-for each row execute function public.touch_conversation_from_message();
 
-drop policy if exists "messages member" on messages;
-create policy "messages member" on messages for select using(exists(select 1 from conversations c where c.id=conversation_id and (c.user_a=auth.uid() or c.user_b=auth.uid())));
-drop policy if exists "messages sender" on messages;
-create policy "messages sender" on messages for insert with check(auth.uid()=sender_id and exists(select 1 from conversations c where c.id=conversation_id and (c.user_a=auth.uid() or c.user_b=auth.uid())) and not exists(select 1 from conversations c join public.blocked_users b on ((b.blocker_id=auth.uid() and b.blocked_id=case when c.user_a=auth.uid() then c.user_b else c.user_a end) or (b.blocker_id=case when c.user_a=auth.uid() then c.user_b else c.user_a end and b.blocked_id=auth.uid())) where c.id=conversation_id));
+drop trigger if exists message_conversation_touch on public.messages;
+drop trigger if exists messages_update_conversation on public.messages;
+
+create trigger messages_update_conversation
+after insert on public.messages
+for each row execute function public.update_conversation_updated_at();
+
+drop policy if exists "messages member" on public.messages;
+drop policy if exists "messages sender" on public.messages;
+drop policy if exists "messages_select_member" on public.messages;
+drop policy if exists "messages_insert_member" on public.messages;
+
+create policy "messages_select_member"
+on public.messages
+for select to authenticated
+using (
+  exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id=messages.conversation_id
+      and cm.user_id=auth.uid()
+  )
+);
+
+create policy "messages_insert_member"
+on public.messages
+for insert to authenticated
+with check (
+  sender_id=auth.uid()
+  and exists (
+    select 1 from public.conversation_members cm
+    where cm.conversation_id=messages.conversation_id
+      and cm.user_id=auth.uid()
+  )
+);
+
 drop policy if exists "notifications own" on notifications;
 create policy "notifications own" on notifications for select using(auth.uid()=user_id);
 drop policy if exists "stories read" on stories;
@@ -687,7 +767,12 @@ begin
   where m.conversation_id=p_conversation
     and m.sender_id<>auth.uid()
     and m.read_at is null
-    and exists (select 1 from public.conversations c where c.id=p_conversation and (c.user_a=auth.uid() or c.user_b=auth.uid()));
+    and exists (
+      select 1
+      from public.conversation_members cm
+      where cm.conversation_id=p_conversation
+        and cm.user_id=auth.uid()
+    );
   get diagnostics changed = row_count;
   return changed;
 end $$;

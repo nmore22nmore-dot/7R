@@ -2039,6 +2039,7 @@ class _ChatPageState extends State<ChatPage> {
         await sb.from('messages').insert({
           'conversation_id': widget.id,
           'sender_id': user.id,
+          'text': '',
           'body': '',
           'media_url': storagePath,
           'media_type': 'voice',
@@ -2124,6 +2125,7 @@ class _ChatPageState extends State<ChatPage> {
       await sb.from('messages').insert({
         'conversation_id': widget.id,
         'sender_id': user.id,
+        'text': body,
         'body': body,
         'media_url': mediaUrl,
         'media_type': mediaType,
